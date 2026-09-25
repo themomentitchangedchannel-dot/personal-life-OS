@@ -15,7 +15,8 @@ const shortDate = new Intl.DateTimeFormat('sl-SI', { timeZone: 'Europe/Ljubljana
 document.querySelector('#top-date').textContent = shortDate;
 document.querySelector('#full-date').textContent = shortDate;
 function renderList(kind) {
-  const list = document.querySelector(`#${kind}-list`);
+  const listId = kind === 'tasks' ? 'task' : 'routine';
+  const list = document.querySelector(`#${listId}-list`);
   list.replaceChildren();
   for (const item of state[kind]) {
     const row = document.createElement('li');
@@ -32,7 +33,7 @@ function renderList(kind) {
     remove.addEventListener('click', () => { state[kind] = state[kind].filter(entry => entry.id !== item.id); save(); render(); });
     row.append(label, remove); list.append(row);
   }
-  document.querySelector(`#${kind}-empty`).hidden = state[kind].length > 0;
+  document.querySelector(`#${listId}-empty`).hidden = state[kind].length > 0;
 }
 function render() {
   renderList('tasks'); renderList('routine');
