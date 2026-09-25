@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f7f8f4" />
     <title>Personal Life OS</title>
-    <link rel="stylesheet" href="styles.css?v=13" />
-    <script src="script.js?v=14" defer></script>
+    <link rel="stylesheet" href="styles.css?v=14" />
+    <script src="script.js?v=15" defer></script>
   </head>
   <body>
     <div class="shell">
@@ -32,6 +32,12 @@
 
         <section class="section" data-tab-view="domov" aria-labelledby="overview-title"><div class="section-heading"><div><span class="eyebrow">PREGLED</span><h2 id="overview-title">Danes je tvoj dan</h2></div><span class="date-label" id="full-date"></span></div>
           <div class="summary-grid"><article class="summary-card coral"><span class="summary-icon">✓</span><span class="summary-number" id="task-count">0/0</span><span class="summary-label">današnjih opravil</span></article><article class="summary-card lavender"><span class="summary-icon">☀</span><span class="summary-number" id="routine-count">0/0</span><span class="summary-label">korakov rutine</span></article><article class="summary-card mint"><span class="summary-icon">◎</span><span class="summary-number" id="day-progress">0%</span><span class="summary-label">današnji napredek</span></article></div>
+        </section>
+
+        <section class="section checkin-section" data-tab-view="domov" aria-labelledby="checkin-title"><div class="section-heading"><div><span class="eyebrow">DAN ZA DNEM</span><h2 id="checkin-title">Voda in koraki</h2></div></div><div class="checkin-grid">
+          <div class="panel checkin-card"><span class="checkin-icon">💧</span><h3>Voda</h3><p class="checkin-total" id="water-total">0 L</p><p class="checkin-target" id="water-target">Določi svoj dnevni cilj.</p><progress id="water-progress" max="100" value="0" aria-label="Napredek pri vodi"></progress><div class="checkin-actions"><button type="button" id="water-small">+ 0,25 L</button><button type="button" id="water-large">+ 0,5 L</button></div><label>Popravi današnji vnos (L)<input id="water-entry" type="number" min="0" max="20" step="0.05" inputmode="decimal" /><button type="button" id="water-set">Shrani</button></label></div>
+          <div class="panel checkin-card"><span class="checkin-icon">👟</span><h3>Koraki</h3><p class="checkin-total" id="steps-total">0</p><p class="checkin-target" id="steps-target">Določi svoj dnevni cilj.</p><progress id="steps-progress" max="100" value="0" aria-label="Napredek pri korakih"></progress><label>Danes narejeni koraki<input id="steps-entry" type="number" min="0" max="100000" step="1" inputmode="numeric" placeholder="Vpiši število korakov" /><button type="button" id="steps-set">Shrani</button></label></div></div>
+          <div class="panel reminder-panel"><h3>Moji cilji in opomniki</h3><form id="checkin-settings"><div class="reminder-fields"><label>Dnevni cilj vode (L)<input name="waterGoal" type="number" min="0.1" max="20" step="0.1" inputmode="decimal" placeholder="Po tvoji izbiri" /></label><label>Dnevni cilj korakov<input name="stepsGoal" type="number" min="1" max="100000" step="1" inputmode="numeric" placeholder="Po tvoji izbiri" /></label></div><div class="reminder-fields"><label class="reminder-toggle"><input name="waterEnabled" type="checkbox" /> Opomni me za vodo</label><label>Ob uri<input name="waterTime" type="time" value="15:00" /></label><label class="reminder-toggle"><input name="stepsEnabled" type="checkbox" /> Opomni me za korake</label><label>Ob uri<input name="stepsTime" type="time" value="20:00" /></label></div><button type="submit">Shrani nastavitve</button><p id="checkin-status" role="status" aria-live="polite"></p></form><div id="daily-reminders" class="daily-reminders" role="status" aria-live="polite"></div><button type="button" id="notification-permission">Omogoči obvestila v napravi</button><p class="checkin-note">Vnosi korakov so ročni. Opomniki v aplikaciji in obvestila v napravi delujejo, ko je stran odprta. Za obvestila pri zaprti aplikaciji bo pozneje potrebna storitev za pošiljanje sporočil.</p></div>
         </section>
 
         <div class="content-grid">

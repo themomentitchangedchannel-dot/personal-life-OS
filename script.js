@@ -10,6 +10,9 @@ if (!Array.isArray(state.events)) state.events = [];
 if (!Array.isArray(state.meals)) state.meals = [];
 if (!state.profile || typeof state.profile !== 'object' || Array.isArray(state.profile)) state.profile = {};
 if (!Array.isArray(state.measurements)) state.measurements = [];
+if (!state.checkinSettings || typeof state.checkinSettings !== 'object') state.checkinSettings = {};
+if (!state.dailyCheckin || state.dailyCheckin.date !== today())
+  state.dailyCheckin = { date: today(), waterMl: 0, steps: 0, notified: {} };
 state.routine = state.routine.map(item => ({ ...item,
   completedDates: Array.isArray(item.completedDates) ? item.completedDates
     : item.done && state.routineDate === today() ? [today()] : [] }));
@@ -166,6 +169,7 @@ function render() {
   renderCalendar();
   renderMeals();
   renderProgress();
+  renderCheckin();
   const dueToday = state.tasks.filter(item => isRecurring(item) ? occursOn(item, today()) : item.date && item.date <= today());
   const tasksDone = dueToday.filter(item => isRecurring(item) ? (item.completedDates || []).includes(today()) : item.done).length;
   const todayRoutine = state.routine.filter(item => routineOccursOn(item, today()));
@@ -432,6 +436,105 @@ function renderProgress() {
   chart.setAttribute('aria-label', `Teža od ${weights[0].weight} kg (${longDate(weights[0].date)}) do ${weights.at(-1).weight} kg (${longDate(weights.at(-1).date)})`);
 }
 
+function refreshDailyCheckin() {
+  if (state.dailyCheckin?.date !== today()) {
+    state.dailyCheckin = { date: today(), waterMl: 0, steps: 0, notified: {} };
+    save(); return true;
+  }
+  state.dailyCheckin.notified ||= {};
+  return false;
+}
+function renderCheckin() {
+  refreshDailyCheckin();
+  const { waterMl, steps, notified } = state.dailyCheckin;
+  const { waterGoalMl, stepsGoal } = state.checkinSettings;
+  document.querySelector('#water-total').textContent = `${(waterMl / 1000).toLocaleString('sl-SI', { maximumFractionDigits: 2 })} L`;
+  document.querySelector('#steps-total').textContent = steps.toLocaleString('sl-SI');
+  document.querySelector('#water-target').textContent = waterGoalMl
+    ? `Cilj: ${(waterGoalMl / 1000).toLocaleString('sl-SI', { maximumFractionDigits: 2 })} L` : 'Določi svoj dnevni cilj.';
+  document.querySelector('#steps-target').textContent = stepsGoal ? `Cilj: ${stepsGoal.toLocaleString('sl-SI')} korakov` : 'Določi svoj dnevni cilj.';
+  document.querySelector('#water-progress').value = waterGoalMl ? Math.min(100, waterMl / waterGoalMl * 100) : 0;
+  document.querySelector('#steps-progress').value = stepsGoal ? Math.min(100, steps / stepsGoal * 100) : 0;
+  const messages = [];
+  if (notified.water && waterGoalMl && waterMl < waterGoalMl) messages.push('Si danes spil dovolj vode?');
+  if (notified.steps && stepsGoal && steps < stepsGoal) messages.push('Si danes naredil dovolj korakov?');
+  document.querySelector('#daily-reminders').replaceChildren(...messages.map(message => {
+    const paragraph = document.createElement('p'); paragraph.textContent = message; return paragraph;
+  }));
+}
+const settingsForm = document.querySelector('#checkin-settings');
+const checkinStatus = document.querySelector('#checkin-status');
+const settings = state.checkinSettings;
+settingsForm.elements.waterGoal.value = settings.waterGoalMl ? settings.waterGoalMl / 1000 : '';
+settingsForm.elements.stepsGoal.value = settings.stepsGoal || '';
+settingsForm.elements.waterEnabled.checked = !!settings.waterEnabled;
+settingsForm.elements.stepsEnabled.checked = !!settings.stepsEnabled;
+settingsForm.elements.waterTime.value = settings.waterTime || '15:00';
+settingsForm.elements.stepsTime.value = settings.stepsTime || '20:00';
+settingsForm.addEventListener('submit', event => {
+  event.preventDefault();
+  const form = settingsForm.elements;
+  state.checkinSettings = { waterGoalMl: form.waterGoal.value ? Math.round(Number(form.waterGoal.value) * 1000) : null,
+    stepsGoal: form.stepsGoal.value ? Number(form.stepsGoal.value) : null,
+    waterEnabled: form.waterEnabled.checked, stepsEnabled: form.stepsEnabled.checked,
+    waterTime: form.waterTime.value, stepsTime: form.stepsTime.value };
+  save(); renderCheckin(); checkReminders();
+  checkinStatus.textContent = 'Cilji in opomniki so shranjeni.';
+});
+document.querySelector('#water-small').addEventListener('click', () => {
+  refreshDailyCheckin(); state.dailyCheckin.waterMl = Math.min(20000, state.dailyCheckin.waterMl + 250); save(); renderCheckin();
+});
+document.querySelector('#water-large').addEventListener('click', () => {
+  refreshDailyCheckin(); state.dailyCheckin.waterMl = Math.min(20000, state.dailyCheckin.waterMl + 500); save(); renderCheckin();
+});
+document.querySelector('#water-set').addEventListener('click', () => {
+  const input = document.querySelector('#water-entry');
+  if (!input.value || !input.checkValidity()) return;
+  refreshDailyCheckin(); state.dailyCheckin.waterMl = Math.round(Number(input.value) * 1000);
+  input.value = ''; save(); renderCheckin();
+});
+document.querySelector('#steps-set').addEventListener('click', () => {
+  const input = document.querySelector('#steps-entry');
+  if (!input.value || !input.checkValidity()) return;
+  refreshDailyCheckin(); state.dailyCheckin.steps = Number(input.value);
+  input.value = ''; save(); renderCheckin();
+});
+async function checkReminders() {
+  if (refreshDailyCheckin()) renderCheckin();
+  const currentTime = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Ljubljana' }).format(new Date());
+  const checks = [
+    ['water', 'waterEnabled', 'waterTime', 'waterGoalMl', 'waterMl', 'Si danes spil dovolj vode?'],
+    ['steps', 'stepsEnabled', 'stepsTime', 'stepsGoal', 'steps', 'Si danes naredil dovolj korakov?']
+  ];
+  for (const [key, enabled, time, goal, amount, message] of checks) {
+    if (!state.checkinSettings[enabled] || !state.checkinSettings[goal]
+      || currentTime < (state.checkinSettings[time] || '23:59')
+      || state.dailyCheckin[amount] >= state.checkinSettings[goal] || state.dailyCheckin.notified[key]) continue;
+    state.dailyCheckin.notified[key] = true; save(); renderCheckin();
+    if ('Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.register('./sw.js');
+        await registration.showNotification('Personal Life OS', { body: message, tag: `checkin-${key}-${today()}` });
+      } catch { /* The in-app reminder remains visible. */ }
+    }
+  }
+}
+document.querySelector('#notification-permission').addEventListener('click', async () => {
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+    checkinStatus.textContent = 'Ta brskalnik ne podpira obvestil v napravi. Opomniki v aplikaciji še vedno delujejo.'; return;
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    checkinStatus.textContent = permission === 'granted'
+      ? 'Obvestila v napravi so omogočena, ko je aplikacija odprta.'
+      : 'Obvestila v napravi niso omogočena. Opomniki v aplikaciji še vedno delujejo.';
+    if (permission === 'granted') await navigator.serviceWorker.register('./sw.js');
+  } catch { checkinStatus.textContent = 'Obvestil v napravi ni bilo mogoče omogočiti.'; }
+});
+setInterval(checkReminders, 60_000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkReminders(); });
+checkReminders();
+
 // Photos live in IndexedDB so they do not fill the small localStorage quota.
 const photosDb = new Promise((resolve, reject) => {
   if (!window.indexedDB) { reject(new Error('Ta brskalnik ne podpira shranjevanja fotografij.')); return; }
@@ -517,7 +620,8 @@ document.querySelector('#backup-export').addEventListener('click', async () => {
   const photos = await photosRequest('getAll');
   const backup = { format: 'personal-life-os', version: 1, exportedAt: new Date().toISOString(),
     routineDate: state.routineDate, tasks: state.tasks, routine: state.routine, events: state.events, meals: state.meals,
-    profile: state.profile, measurements: state.measurements, photos };
+    profile: state.profile, measurements: state.measurements, photos,
+    dailyCheckin: state.dailyCheckin, checkinSettings: state.checkinSettings };
   const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
   const link = document.createElement('a');
   link.href = url; link.download = `personal-life-os-${today()}.json`;
@@ -621,6 +725,30 @@ function validatedPhotos(photos) {
     return { id: photo.id, date: photo.date, caption: photo.caption, image: photo.image };
   });
 }
+function validatedCheckinSettings(value) {
+  if (value == null) return {};
+  if (typeof value !== 'object' || Array.isArray(value)) throw new Error('Neveljavne nastavitve opomnikov.');
+  const result = {};
+  for (const [key, max] of [['waterGoalMl', 20000], ['stepsGoal', 100000]]) {
+    if (value[key] != null && (!Number.isInteger(value[key]) || value[key] < 1 || value[key] > max))
+      throw new Error('Kopija vsebuje neveljaven cilj.');
+    result[key] = value[key] ?? null;
+  }
+  for (const key of ['waterTime', 'stepsTime']) {
+    if (value[key] != null && !validTime(value[key])) throw new Error('Kopija vsebuje neveljavno uro opomnika.');
+    result[key] = value[key] || (key === 'waterTime' ? '15:00' : '20:00');
+  }
+  result.waterEnabled = value.waterEnabled === true;
+  result.stepsEnabled = value.stepsEnabled === true;
+  return result;
+}
+function validatedDailyCheckin(value) {
+  if (value == null || value.date !== today()) return null;
+  if (!Number.isInteger(value.waterMl) || value.waterMl < 0 || value.waterMl > 20000
+    || !Number.isInteger(value.steps) || value.steps < 0 || value.steps > 100000)
+    throw new Error('Kopija vsebuje neveljaven dnevni vnos.');
+  return { date: today(), waterMl: value.waterMl, steps: value.steps, notified: {} };
+}
 document.querySelector('#backup-file').addEventListener('change', async event => {
   pendingImport = null;
   document.querySelector('#import-preview').hidden = true;
@@ -637,6 +765,8 @@ document.querySelector('#backup-file').addEventListener('change', async event =>
     pendingImport.profile = validatedProfile(backup.profile);
     pendingImport.measurements = validatedMeasurements(backup.measurements);
     pendingImport.photos = validatedPhotos(backup.photos);
+    pendingImport.checkinSettings = validatedCheckinSettings(backup.checkinSettings);
+    pendingImport.dailyCheckin = validatedDailyCheckin(backup.dailyCheckin);
     const counts = ['tasks', 'routine', 'events', 'meals'].map(kind =>
       pendingImport[kind].filter(item => !state[kind].some(existing => existing.id === item.id)).length);
     document.querySelector('#import-summary').textContent =
@@ -666,6 +796,19 @@ document.querySelector('#backup-import').addEventListener('click', async () => {
   for (const item of toImport.measurements) if (!measurementIds.has(item.id)) { state.measurements.push(item); measurementIds.add(item.id); }
   for (const key of ['name', 'height', 'goal']) if (!state.profile[key] && toImport.profile[key]) state.profile[key] = toImport.profile[key];
   for (const key of ['name', 'height', 'goal']) profileForm.elements[key].value = state.profile[key] ?? '';
+  if (toImport.dailyCheckin) {
+    state.dailyCheckin.waterMl = Math.max(state.dailyCheckin.waterMl, toImport.dailyCheckin.waterMl);
+    state.dailyCheckin.steps = Math.max(state.dailyCheckin.steps, toImport.dailyCheckin.steps);
+  }
+  if (!Object.keys(state.checkinSettings).length) state.checkinSettings = toImport.checkinSettings;
+  else {
+    if (!state.checkinSettings.waterGoalMl && toImport.checkinSettings.waterGoalMl) state.checkinSettings.waterGoalMl = toImport.checkinSettings.waterGoalMl;
+    if (!state.checkinSettings.stepsGoal && toImport.checkinSettings.stepsGoal) state.checkinSettings.stepsGoal = toImport.checkinSettings.stepsGoal;
+  }
+  for (const key of ['waterGoal', 'stepsGoal']) settingsForm.elements[key].value =
+    key === 'waterGoal' ? (state.checkinSettings.waterGoalMl || 0) / 1000 || '' : state.checkinSettings.stepsGoal || '';
+  for (const key of ['waterEnabled', 'stepsEnabled']) settingsForm.elements[key].checked = !!state.checkinSettings[key];
+  for (const key of ['waterTime', 'stepsTime']) settingsForm.elements[key].value = state.checkinSettings[key] || (key === 'waterTime' ? '15:00' : '20:00');
   pendingImport = null;
   document.querySelector('#import-preview').hidden = true;
   backupStatus.textContent = 'Podatki so dodani. Obstoječi vnosi so ohranjeni.';
