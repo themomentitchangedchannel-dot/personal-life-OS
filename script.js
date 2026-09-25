@@ -486,6 +486,9 @@ settingsForm.addEventListener('submit', event => {
   save(); renderCheckin(); checkReminders();
   checkinStatus.textContent = 'Cilji in opomniki so shranjeni.';
 });
+document.querySelector('#water-tiny').addEventListener('click', () => {
+  refreshDailyCheckin(); state.dailyCheckin.waterMl = Math.min(20000, state.dailyCheckin.waterMl + 100); save(); renderCheckin();
+});
 document.querySelector('#water-small').addEventListener('click', () => {
   refreshDailyCheckin(); state.dailyCheckin.waterMl = Math.min(20000, state.dailyCheckin.waterMl + 250); save(); renderCheckin();
 });
