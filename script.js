@@ -11,6 +11,8 @@ if (!Array.isArray(state.meals)) state.meals = [];
 if (!state.profile || typeof state.profile !== 'object' || Array.isArray(state.profile)) state.profile = {};
 if (!Array.isArray(state.measurements)) state.measurements = [];
 if (!state.checkinSettings || typeof state.checkinSettings !== 'object') state.checkinSettings = {};
+if (state.checkinSettings.deviceEnabled == null)
+  state.checkinSettings.deviceEnabled = 'Notification' in window && Notification.permission === 'granted';
 if (!state.dailyCheckin || state.dailyCheckin.date !== today())
   state.dailyCheckin = { date: today(), waterMl: 0, steps: 0, notified: {} };
 state.routine = state.routine.map(item => ({ ...item,
@@ -456,11 +458,13 @@ function renderCheckin() {
   document.querySelector('#water-progress').value = waterGoalMl ? Math.min(100, waterMl / waterGoalMl * 100) : 0;
   document.querySelector('#steps-progress').value = stepsGoal ? Math.min(100, steps / stepsGoal * 100) : 0;
   const messages = [];
-  if (notified.water && waterGoalMl && waterMl < waterGoalMl) messages.push('Si danes spil dovolj vode?');
-  if (notified.steps && stepsGoal && steps < stepsGoal) messages.push('Si danes naredil dovolj korakov?');
+  if (state.checkinSettings.waterEnabled && notified.water && waterGoalMl && waterMl < waterGoalMl) messages.push('Si danes spil dovolj vode?');
+  if (state.checkinSettings.stepsEnabled && notified.steps && stepsGoal && steps < stepsGoal) messages.push('Si danes naredil dovolj korakov?');
   document.querySelector('#daily-reminders').replaceChildren(...messages.map(message => {
     const paragraph = document.createElement('p'); paragraph.textContent = message; return paragraph;
   }));
+  document.querySelector('#notification-permission').textContent = state.checkinSettings.deviceEnabled
+    ? 'Izklopi obvestila v napravi' : 'Omogoči obvestila v napravi';
 }
 const settingsForm = document.querySelector('#checkin-settings');
 const checkinStatus = document.querySelector('#checkin-status');
@@ -477,7 +481,8 @@ settingsForm.addEventListener('submit', event => {
   state.checkinSettings = { waterGoalMl: form.waterGoal.value ? Math.round(Number(form.waterGoal.value) * 1000) : null,
     stepsGoal: form.stepsGoal.value ? Number(form.stepsGoal.value) : null,
     waterEnabled: form.waterEnabled.checked, stepsEnabled: form.stepsEnabled.checked,
-    waterTime: form.waterTime.value, stepsTime: form.stepsTime.value };
+    waterTime: form.waterTime.value, stepsTime: form.stepsTime.value,
+    deviceEnabled: !!state.checkinSettings.deviceEnabled };
   save(); renderCheckin(); checkReminders();
   checkinStatus.textContent = 'Cilji in opomniki so shranjeni.';
 });
@@ -511,7 +516,7 @@ async function checkReminders() {
       || currentTime < (state.checkinSettings[time] || '23:59')
       || state.dailyCheckin[amount] >= state.checkinSettings[goal] || state.dailyCheckin.notified[key]) continue;
     state.dailyCheckin.notified[key] = true; save(); renderCheckin();
-    if ('Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
+    if (state.checkinSettings.deviceEnabled && 'Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
       try {
         const registration = await navigator.serviceWorker.register('./sw.js');
         await registration.showNotification('Personal Life OS', { body: message, tag: `checkin-${key}-${today()}` });
@@ -520,16 +525,31 @@ async function checkReminders() {
   }
 }
 document.querySelector('#notification-permission').addEventListener('click', async () => {
+  if (state.checkinSettings.deviceEnabled) {
+    state.checkinSettings.deviceEnabled = false; save(); renderCheckin();
+    checkinStatus.textContent = 'Obvestila v napravi so izklopljena. Dovoljenje strani lahko prekličeš v nastavitvah brskalnika.';
+    return;
+  }
   if (!('Notification' in window) || !('serviceWorker' in navigator)) {
     checkinStatus.textContent = 'Ta brskalnik ne podpira obvestil v napravi. Opomniki v aplikaciji še vedno delujejo.'; return;
   }
   try {
     const permission = await Notification.requestPermission();
+    state.checkinSettings.deviceEnabled = permission === 'granted'; save(); renderCheckin();
     checkinStatus.textContent = permission === 'granted'
       ? 'Obvestila v napravi so omogočena, ko je aplikacija odprta.'
       : 'Obvestila v napravi niso omogočena. Opomniki v aplikaciji še vedno delujejo.';
     if (permission === 'granted') await navigator.serviceWorker.register('./sw.js');
   } catch { checkinStatus.textContent = 'Obvestil v napravi ni bilo mogoče omogočiti.'; }
+});
+document.querySelector('#disable-reminders').addEventListener('click', () => {
+  state.checkinSettings.waterEnabled = false;
+  state.checkinSettings.stepsEnabled = false;
+  state.checkinSettings.deviceEnabled = false;
+  settingsForm.elements.waterEnabled.checked = false;
+  settingsForm.elements.stepsEnabled.checked = false;
+  save(); renderCheckin();
+  checkinStatus.textContent = 'Vsi opomniki so izklopljeni. Znova jih vklopiš z označitvijo in shranjevanjem nastavitev.';
 });
 setInterval(checkReminders, 60_000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkReminders(); });
