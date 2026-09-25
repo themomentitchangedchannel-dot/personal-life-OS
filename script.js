@@ -503,4 +503,19 @@ for (const kind of ['tasks', 'routine']) {
     input.value = ''; save(); render(); input.focus();
   });
 }
-save(); render();
+const tabNames = new Set(['domov', 'opravila', 'rutina', 'koledar', 'jedilnik', 'podatki']);
+function showTab() {
+  const requested = decodeURIComponent(location.hash.slice(1));
+  const active = tabNames.has(requested) ? requested : 'domov';
+  for (const section of document.querySelectorAll('[data-tab-view]')) section.hidden = section.dataset.tabView !== active;
+  for (const link of document.querySelectorAll('[data-tab]')) {
+    if (link.dataset.tab === active) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', showTab);
+document.querySelectorAll('[data-tab]').forEach(link => link.addEventListener('click', () => {
+  if (location.hash === link.getAttribute('href')) showTab();
+}));
+save(); render(); showTab();
