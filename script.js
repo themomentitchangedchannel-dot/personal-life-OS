@@ -167,6 +167,77 @@ document.querySelector('#event-form').addEventListener('submit', event => {
   save(); render(); input.focus();
 });
 
+const backupStatus = document.querySelector('#backup-status');
+let pendingImport = null;
+document.querySelector('#backup-export').addEventListener('click', () => {
+  const backup = { format: 'personal-life-os', version: 1, exportedAt: new Date().toISOString(),
+    routineDate: state.routineDate, tasks: state.tasks, routine: state.routine, events: state.events };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url; link.download = `personal-life-os-${today()}.json`;
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  backupStatus.textContent = 'Kopija je pripravljena za prenos.';
+});
+
+const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+  && !Number.isNaN(Date.parse(`${value}T12:00:00Z`)) && isoDate(dateObject(value)) === value;
+function validatedEntries(entries, kind, backupRoutineDate) {
+  if (!Array.isArray(entries) || entries.length > 5000) throw new Error('Neveljavno število vnosov.');
+  return entries.map(item => {
+    if (!item || typeof item.id !== 'string' || !item.id || typeof item.text !== 'string'
+      || !item.text.trim() || item.text.length > 120) throw new Error('Kopija vsebuje neveljaven vnos.');
+    const clean = { id: item.id, text: item.text.trim() };
+    if (kind === 'events') {
+      if (!validDate(item.date) || (item.time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(item.time)))
+        throw new Error('Kopija vsebuje neveljaven datum ali uro.');
+      clean.date = item.date; clean.time = item.time || '';
+    } else {
+      clean.done = kind === 'routine' && backupRoutineDate !== today() ? false : item.done === true;
+      if (kind === 'tasks') {
+        if (item.date != null && !validDate(item.date)) throw new Error('Kopija vsebuje neveljaven datum.');
+        clean.date = item.date || null;
+      }
+    }
+    return clean;
+  });
+}
+document.querySelector('#backup-file').addEventListener('change', async event => {
+  pendingImport = null;
+  document.querySelector('#import-preview').hidden = true;
+  backupStatus.textContent = '';
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    if (file.size > 2_000_000) throw new Error('Datoteka je prevelika (največ 2 MB).');
+    const backup = JSON.parse(await file.text());
+    if (backup?.format !== 'personal-life-os' || backup.version !== 1)
+      throw new Error('Ta datoteka ni podprta kopija Personal Life OS.');
+    pendingImport = Object.fromEntries(['tasks', 'routine', 'events'].map(kind => [kind,
+      validatedEntries(backup[kind], kind, backup.routineDate)]));
+    const counts = ['tasks', 'routine', 'events'].map(kind =>
+      pendingImport[kind].filter(item => !state[kind].some(existing => existing.id === item.id)).length);
+    document.querySelector('#import-summary').textContent =
+      `Za dodajanje: ${counts[0]} opravil, ${counts[1]} korakov rutine, ${counts[2]} dogodkov. Obstoječi vnosi ostanejo.`;
+    document.querySelector('#import-preview').hidden = false;
+  } catch (error) { backupStatus.textContent = error instanceof Error ? error.message : 'Datoteke ni mogoče prebrati.'; }
+  event.target.value = '';
+});
+document.querySelector('#backup-cancel').addEventListener('click', () => {
+  pendingImport = null; document.querySelector('#import-preview').hidden = true; backupStatus.textContent = '';
+});
+document.querySelector('#backup-import').addEventListener('click', () => {
+  if (!pendingImport) return;
+  for (const kind of ['tasks', 'routine', 'events']) {
+    const ids = new Set(state[kind].map(item => item.id));
+    for (const item of pendingImport[kind]) if (!ids.has(item.id)) { state[kind].push(item); ids.add(item.id); }
+  }
+  pendingImport = null;
+  document.querySelector('#import-preview').hidden = true;
+  backupStatus.textContent = 'Podatki so dodani. Obstoječi vnosi so ohranjeni.';
+  save(); render();
+});
+
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => {
   taskView = button.dataset.view;
   render();
