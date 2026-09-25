@@ -459,7 +459,7 @@ async function renderPhotos() {
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'remove';
     remove.textContent = 'Odstrani'; remove.setAttribute('aria-label', `Odstrani fotografijo: ${longDate(photo.date)}`);
     remove.addEventListener('click', async () => {
-      try { await photosRequest('delete', photo.id); await renderPhotos(); }
+      try { await photosRequest('delete', photo.id); await renderPhotos(); photoStatus.textContent = 'Fotografija je odstranjena.'; }
       catch (error) { photoStatus.textContent = error.message; }
     });
     card.append(image, caption, remove); gallery.append(card);
