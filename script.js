@@ -373,7 +373,11 @@ mealPhotoAnalyze.addEventListener('click', async () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image })
     });
-    if (!response.ok) throw new Error('Prepoznava trenutno ni uspela. Poskusi znova.');
+    if (!response.ok) {
+      throw new Error(response.status === 422 ? 'Na fotografiji ni bilo mogoče prepoznati jedi. Vnesi jo ročno ali poskusi z drugo sliko.'
+        : response.status === 503 ? 'Prepoznava še ni nastavljena. Poskusi znova pozneje.'
+        : 'Prepoznava trenutno ni uspela. Poskusi znova.');
+    }
     const result = await response.json();
     if (!result.title || typeof result.title !== 'string') throw new Error('Jedi na fotografiji ni bilo mogoče prepoznati.');
     document.querySelector('#meal-title').value = result.title.slice(0, 120);
