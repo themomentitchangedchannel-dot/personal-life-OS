@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f7f8f4" />
     <title>Personal Life OS</title>
-    <link rel="stylesheet" href="styles.css?v=10" />
-    <script src="script.js?v=11" defer></script>
+    <link rel="stylesheet" href="styles.css?v=11" />
+    <script src="script.js?v=12" defer></script>
   </head>
   <body>
     <div class="shell">
@@ -59,7 +59,8 @@
             </form></div>
           </div>
           <div class="panel progress-history"><h3>Razvoj meritev</h3><div class="progress-summary" id="progress-summary"></div><div class="progress-chart-wrap" id="progress-chart-wrap" hidden><h4>Teža skozi čas</h4><svg id="progress-chart" viewBox="0 0 600 180" role="img" aria-label="Graf gibanja teže" preserveAspectRatio="none"></svg></div><ul id="measurement-list" class="measurement-list"></ul><p class="empty" id="measurement-empty">Dodaj prvo meritev, da vidiš napredek.</p></div>
-          <p class="progress-hint">Osebni podatki in meritve so shranjeni samo v tem brskalniku. Kopijo lahko preneseš v zavihku Podatki.</p>
+          <div class="panel progress-photos"><h3>Fotografije napredka</h3><form id="photo-form" class="progress-form"><div class="photo-fields"><label>Datum<input name="date" type="date" required /></label><label>Fotografija<input name="photo" type="file" accept="image/jpeg,image/png,image/webp,image/avif" required /></label></div><label>Opis <span>(neobvezno)</span><input name="caption" maxlength="120" placeholder="npr. po prvem mesecu" /></label><button type="submit">Dodaj fotografijo</button><p id="photo-status" role="status" aria-live="polite"></p></form><div class="photo-grid" id="photo-grid"></div><p class="empty" id="photo-empty">Dodaj prvo fotografijo za vizualno primerjavo.</p></div>
+          <p class="progress-hint">Osebni podatki, meritve in fotografije so shranjeni samo v tem brskalniku. Kopijo lahko preneseš v zavihku Podatki.</p>
         </section>
 
         <section class="section backup-section" data-tab-view="podatki" id="podatki" aria-labelledby="backup-title"><div class="backup-card"><div><span class="eyebrow">TVOJI PODATKI</span><h2 id="backup-title">Vzemi svoje podatke s seboj</h2><p>Podatki so zdaj shranjeni samo v tem brskalniku. Shrani kopijo in jo lahko uvoziš na drugi napravi.</p></div><div class="backup-actions"><button type="button" id="backup-export">Prenesi kopijo</button><label for="backup-file" class="import-button">Izberi kopijo</label><input id="backup-file" type="file" accept=".json,application/json" class="sr-only" /></div><div class="import-preview" id="import-preview" hidden><p id="import-summary"></p><button type="button" id="backup-import">Uvozi podatke</button><button type="button" id="backup-cancel">Prekliči</button></div><p class="backup-status" id="backup-status" role="status" aria-live="polite"></p></div></section>

@@ -408,18 +408,99 @@ function renderProgress() {
   chart.setAttribute('aria-label', `Teža od ${weights[0].weight} kg (${longDate(weights[0].date)}) do ${weights.at(-1).weight} kg (${longDate(weights.at(-1).date)})`);
 }
 
+// Photos live in IndexedDB so they do not fill the small localStorage quota.
+const photosDb = new Promise((resolve, reject) => {
+  if (!window.indexedDB) { reject(new Error('Ta brskalnik ne podpira shranjevanja fotografij.')); return; }
+  const request = indexedDB.open('personal-life-os-photos', 1);
+  request.onupgradeneeded = () => request.result.createObjectStore('photos', { keyPath: 'id' });
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(new Error('Shranjevanje fotografij ni na voljo.'));
+});
+async function photosRequest(method, value) {
+  const db = await photosDb;
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction('photos', method === 'getAll' ? 'readonly' : 'readwrite');
+    const request = method === 'getAll' ? transaction.objectStore('photos').getAll()
+      : transaction.objectStore('photos')[method](value);
+    request.onsuccess = () => { if (method === 'getAll') resolve(request.result); };
+    transaction.oncomplete = () => { if (method !== 'getAll') resolve(); };
+    transaction.onerror = () => reject(new Error('Fotografije ni mogoče shraniti ali prebrati.'));
+  });
+}
+const photoForm = document.querySelector('#photo-form');
+const photoStatus = document.querySelector('#photo-status');
+photoForm.elements.date.value = today();
+function compressedPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const source = URL.createObjectURL(file);
+    image.onload = () => {
+      URL.revokeObjectURL(source);
+      const scale = Math.min(1, 1400 / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.78));
+    };
+    image.onerror = () => { URL.revokeObjectURL(source); reject(new Error('Slike ni mogoče prebrati.')); };
+    image.src = source;
+  });
+}
+async function renderPhotos() {
+  const photos = (await photosRequest('getAll')).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  const gallery = document.querySelector('#photo-grid'); gallery.replaceChildren();
+  document.querySelector('#photo-empty').hidden = photos.length > 0;
+  for (const photo of photos) {
+    const card = document.createElement('figure');
+    const image = document.createElement('img'); image.src = photo.image; image.loading = 'lazy';
+    image.alt = `Napredek, ${longDate(photo.date)}${photo.caption ? `: ${photo.caption}` : ''}`;
+    const caption = document.createElement('figcaption'); caption.textContent = `${longDate(photo.date)}${photo.caption ? ` · ${photo.caption}` : ''}`;
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'remove';
+    remove.textContent = 'Odstrani'; remove.setAttribute('aria-label', `Odstrani fotografijo: ${longDate(photo.date)}`);
+    remove.addEventListener('click', async () => {
+      try { await photosRequest('delete', photo.id); await renderPhotos(); }
+      catch (error) { photoStatus.textContent = error.message; }
+    });
+    card.append(image, caption, remove); gallery.append(card);
+  }
+}
+photoForm.addEventListener('submit', async event => {
+  event.preventDefault(); photoStatus.textContent = '';
+  const file = photoForm.elements.photo.files[0];
+  if (!file || !['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type) || file.size > 15_000_000) {
+    photoStatus.textContent = 'Izberi sliko JPG, PNG, WebP ali AVIF, veliko največ 15 MB.'; return;
+  }
+  const button = photoForm.querySelector('button[type=submit]'); button.disabled = true;
+  try {
+    const existing = await photosRequest('getAll');
+    if (existing.length >= 100) throw new Error('Shranjenih je lahko največ 100 fotografij.');
+    const image = await compressedPhoto(file);
+    if (image.length > 1_500_000) throw new Error('Slika je po obdelavi še vedno prevelika. Izberi manjšo fotografijo.');
+    await photosRequest('put', { id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+      date: photoForm.elements.date.value, caption: photoForm.elements.caption.value.trim(), image });
+    photoForm.reset(); photoForm.elements.date.value = today();
+    photoStatus.textContent = 'Fotografija je shranjena.'; await renderPhotos();
+  } catch (error) { photoStatus.textContent = error.message; }
+  finally { button.disabled = false; }
+});
+renderPhotos().catch(error => { photoStatus.textContent = error.message; });
+
 const backupStatus = document.querySelector('#backup-status');
 let pendingImport = null;
-document.querySelector('#backup-export').addEventListener('click', () => {
+document.querySelector('#backup-export').addEventListener('click', async () => {
+  try {
+  const photos = await photosRequest('getAll');
   const backup = { format: 'personal-life-os', version: 1, exportedAt: new Date().toISOString(),
     routineDate: state.routineDate, tasks: state.tasks, routine: state.routine, events: state.events, meals: state.meals,
-    profile: state.profile, measurements: state.measurements };
+    profile: state.profile, measurements: state.measurements, photos };
   const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
   const link = document.createElement('a');
   link.href = url; link.download = `personal-life-os-${today()}.json`;
   document.body.append(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   backupStatus.textContent = 'Kopija je pripravljena za prenos.';
+  } catch (error) { backupStatus.textContent = error.message; }
 });
 
 const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -492,6 +573,18 @@ function validatedMeasurements(entries) {
     return clean;
   });
 }
+function validatedPhotos(photos) {
+  if (photos == null) return [];
+  if (!Array.isArray(photos) || photos.length > 100) throw new Error('Neveljavno število fotografij.');
+  return photos.map(photo => {
+    if (!photo || typeof photo.id !== 'string' || !photo.id || !validDate(photo.date)
+      || typeof photo.caption !== 'string' || photo.caption.length > 120
+      || typeof photo.image !== 'string' || photo.image.length > 1_500_000
+      || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(photo.image))
+      throw new Error('Kopija vsebuje neveljavno fotografijo.');
+    return { id: photo.id, date: photo.date, caption: photo.caption, image: photo.image };
+  });
+}
 document.querySelector('#backup-file').addEventListener('change', async event => {
   pendingImport = null;
   document.querySelector('#import-preview').hidden = true;
@@ -499,7 +592,7 @@ document.querySelector('#backup-file').addEventListener('change', async event =>
   const file = event.target.files[0];
   if (!file) return;
   try {
-    if (file.size > 2_000_000) throw new Error('Datoteka je prevelika (največ 2 MB).');
+    if (file.size > 80_000_000) throw new Error('Datoteka je prevelika (največ 80 MB).');
     const backup = JSON.parse(await file.text());
     if (backup?.format !== 'personal-life-os' || backup.version !== 1)
       throw new Error('Ta datoteka ni podprta kopija Personal Life OS.');
@@ -507,10 +600,11 @@ document.querySelector('#backup-file').addEventListener('change', async event =>
       validatedEntries(kind === 'meals' && backup.meals == null ? [] : backup[kind], kind, backup.routineDate)]));
     pendingImport.profile = validatedProfile(backup.profile);
     pendingImport.measurements = validatedMeasurements(backup.measurements);
+    pendingImport.photos = validatedPhotos(backup.photos);
     const counts = ['tasks', 'routine', 'events', 'meals'].map(kind =>
       pendingImport[kind].filter(item => !state[kind].some(existing => existing.id === item.id)).length);
     document.querySelector('#import-summary').textContent =
-      `Za dodajanje: ${counts[0]} opravil, ${counts[1]} korakov rutine, ${counts[2]} dogodkov, ${counts[3]} obrokov, ${pendingImport.measurements.filter(item => !state.measurements.some(existing => existing.id === item.id)).length} meritev. Osnovni podatki iz kopije dopolnijo prazna polja.`;
+      `Za dodajanje: ${counts[0]} opravil, ${counts[1]} korakov rutine, ${counts[2]} dogodkov, ${counts[3]} obrokov, ${pendingImport.measurements.filter(item => !state.measurements.some(existing => existing.id === item.id)).length} meritev, ${pendingImport.photos.length} fotografij (že shranjene se preskočijo). Osnovni podatki iz kopije dopolnijo prazna polja.`;
     document.querySelector('#import-preview').hidden = false;
   } catch (error) { backupStatus.textContent = error instanceof Error ? error.message : 'Datoteke ni mogoče prebrati.'; }
   event.target.value = '';
@@ -518,20 +612,30 @@ document.querySelector('#backup-file').addEventListener('change', async event =>
 document.querySelector('#backup-cancel').addEventListener('click', () => {
   pendingImport = null; document.querySelector('#import-preview').hidden = true; backupStatus.textContent = '';
 });
-document.querySelector('#backup-import').addEventListener('click', () => {
+document.querySelector('#backup-import').addEventListener('click', async () => {
   if (!pendingImport) return;
+  const toImport = pendingImport;
+  const importButton = document.querySelector('#backup-import'); importButton.disabled = true;
+  try {
+  const existingPhotos = await photosRequest('getAll');
+  const existingIds = new Set(existingPhotos.map(photo => photo.id));
+  if (existingPhotos.length + toImport.photos.filter(photo => !existingIds.has(photo.id)).length > 100)
+    throw new Error('Za uvoz je dovolj prostora za največ 100 fotografij.');
+  for (const photo of toImport.photos) if (!existingIds.has(photo.id)) await photosRequest('put', photo);
   for (const kind of ['tasks', 'routine', 'events', 'meals']) {
     const ids = new Set(state[kind].map(item => item.id));
-    for (const item of pendingImport[kind]) if (!ids.has(item.id)) { state[kind].push(item); ids.add(item.id); }
+    for (const item of toImport[kind]) if (!ids.has(item.id)) { state[kind].push(item); ids.add(item.id); }
   }
   const measurementIds = new Set(state.measurements.map(item => item.id));
-  for (const item of pendingImport.measurements) if (!measurementIds.has(item.id)) { state.measurements.push(item); measurementIds.add(item.id); }
-  for (const key of ['name', 'height', 'goal']) if (!state.profile[key] && pendingImport.profile[key]) state.profile[key] = pendingImport.profile[key];
+  for (const item of toImport.measurements) if (!measurementIds.has(item.id)) { state.measurements.push(item); measurementIds.add(item.id); }
+  for (const key of ['name', 'height', 'goal']) if (!state.profile[key] && toImport.profile[key]) state.profile[key] = toImport.profile[key];
   for (const key of ['name', 'height', 'goal']) profileForm.elements[key].value = state.profile[key] ?? '';
   pendingImport = null;
   document.querySelector('#import-preview').hidden = true;
   backupStatus.textContent = 'Podatki so dodani. Obstoječi vnosi so ohranjeni.';
-  save(); render();
+  save(); render(); await renderPhotos();
+  } catch (error) { backupStatus.textContent = error.message; }
+  finally { importButton.disabled = false; }
 });
 
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => {
