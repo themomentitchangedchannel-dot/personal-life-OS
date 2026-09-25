@@ -38,3 +38,7 @@ The mobile-friendly app separates the home overview, routine, combined calendar 
 V zavihku Jedilnik izberi vrsto obroka in klikni »Predlagaj mi obrok«. Vsak predlog vsebuje sestavine za eno osebo, čas in korake priprave. Ko predlog dodaš v tedenski jedilnik, recept odpreš s klikom na »Recept« pri obroku.
 
 Sestavine, ki jih imaš doma, označi v zaprtem seznamu »Izberi sestavine« pri predlogih. Izbor se shrani v brskalnik in v varnostno kopijo. Predlogi se razvrstijo po številu manjkajočih sestavin; prikazan je tudi njihov seznam. Iskanje poteka lokalno po vključenih receptih.
+
+## Kalorije in makrohranila
+
+Pri obroku lahko vneseš porcijo, energijo (kcal), beljakovine, ogljikove hidrate in maščobe. Jedilnik sešteje samo obroke z vsemi štirimi hranilnimi vrednostmi in pokaže pokritost, da delni dnevni seštevek ni videti kot celoten vnos. Shranjene obroke lahko urejaš. Posodobljen Worker vrne približno oceno za fotografijo ali en obrok po receptu; uporabnik jo pred shranjevanjem preveri in popravi. Slikovna ocena porcije je nezanesljiva in ni prehranska analiza z laboratorijsko natančnostjo.

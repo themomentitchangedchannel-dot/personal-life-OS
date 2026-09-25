@@ -284,13 +284,19 @@ function renderMeals() {
       const chip = document.createElement('span'); chip.className = 'meal-chip';
       chip.textContent = `${mealKinds[meal.kind]}: ${meal.text}`; button.append(chip);
     }
-    button.addEventListener('click', () => { selectedMealDate = date; clearSuggestion(); renderMeals(); });
+    button.addEventListener('click', () => { selectedMealDate = date; resetMealEditor(); clearSuggestion(); renderMeals(); });
     week.append(button);
   }
   document.querySelector('#meal-day-title').textContent = longDate(selectedMealDate);
   const list = document.querySelector('#meal-list'); list.replaceChildren();
   const entries = state.meals.filter(item => item.date === selectedMealDate)
     .sort((a, b) => Object.keys(mealKinds).indexOf(a.kind) - Object.keys(mealKinds).indexOf(b.kind));
+  const tracked = entries.filter(item => item.nutrition && ['kcal', 'proteinG', 'carbsG', 'fatG']
+    .every(key => Number.isFinite(item.nutrition[key])));
+  const total = key => tracked.reduce((sum, item) => sum + item.nutrition[key], 0);
+  document.querySelector('#meal-nutrition-total').textContent = entries.length
+    ? `Skupaj z vnesenimi vrednostmi (${tracked.length}/${entries.length} obrokov): ${Math.round(total('kcal'))} kcal · B ${total('proteinG').toFixed(1)} g · OH ${total('carbsG').toFixed(1)} g · M ${total('fatG').toFixed(1)} g`
+    : 'Dodaj obrok za dnevni seštevek kalorij in makrohranil.';
   for (const item of entries) {
     const row = document.createElement('li');
     const kind = document.createElement('span'); kind.className = 'meal-kind'; kind.textContent = mealKinds[item.kind];
@@ -299,13 +305,29 @@ function renderMeals() {
     remove.setAttribute('aria-label', `Odstrani obrok: ${item.text}`);
     remove.addEventListener('click', () => { state.meals = state.meals.filter(meal => meal.id !== item.id); save(); render(); });
     row.append(kind, title);
+    if (item.nutrition) {
+      const values = document.createElement('small'); values.className = 'meal-nutrition';
+      values.textContent = `${item.nutrition.kcal} kcal · B ${item.nutrition.proteinG} g · OH ${item.nutrition.carbsG} g · M ${item.nutrition.fatG} g${item.nutrition.portionG ? ` · porcija ${item.nutrition.portionG} g` : ''}${item.nutrition.source === 'photo-estimate' ? ' · ocena s slike' : item.nutrition.source === 'recipe-estimate' ? ' · ocena recepta' : ''}`;
+      row.append(values);
+    }
     const recipe = mealRecipes.find(entry => entry.id === item.recipeId);
     if (recipe) {
       const details = document.createElement('details'); details.className = 'planned-recipe';
       const summary = document.createElement('summary'); summary.textContent = 'Recept';
       details.append(summary, recipeContent(recipe)); row.append(details);
     }
-    row.append(remove); list.append(row);
+    const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'meal-edit'; edit.textContent = 'Uredi';
+    edit.setAttribute('aria-label', `Uredi obrok: ${item.text}`);
+    edit.addEventListener('click', () => {
+      editingMealId = item.id;
+      document.querySelector('#meal-kind').value = item.kind;
+      document.querySelector('#meal-title').value = item.text;
+      for (const [id, key] of Object.entries(nutritionInputs)) document.querySelector(`#meal-${id}`).value = item.nutrition?.[key] ?? '';
+      document.querySelector('#meal-submit').textContent = 'Shrani obrok';
+      document.querySelector('#meal-cancel-edit').hidden = false;
+      document.querySelector('#meal-title').focus();
+    });
+    row.append(edit, remove); list.append(row);
   }
   document.querySelector('#meal-empty').hidden = entries.length > 0;
 }
@@ -314,21 +336,46 @@ for (const [buttonId, shift] of [['meal-prev', -7], ['meal-next', 7]]) {
   document.querySelector(`#${buttonId}`).addEventListener('click', () => {
     displayedMealWeek = addDays(displayedMealWeek, shift);
     selectedMealDate = displayedMealWeek;
-    clearSuggestion();
+    resetMealEditor(); clearSuggestion();
     renderMeals();
   });
 }
 document.querySelector('#meal-today').addEventListener('click', () => {
-  selectedMealDate = today(); displayedMealWeek = mealWeekStart(today()); clearSuggestion(); renderMeals();
+  selectedMealDate = today(); displayedMealWeek = mealWeekStart(today()); resetMealEditor(); clearSuggestion(); renderMeals();
 });
+const nutritionInputs = { portion: 'portionG', kcal: 'kcal', protein: 'proteinG', carbs: 'carbsG', fat: 'fatG' };
+let editingMealId = null;
+let photoNutritionPending = false;
+let recipeNutritionPending = false;
+function resetMealEditor() {
+  editingMealId = null; photoNutritionPending = false; recipeNutritionPending = false;
+  document.querySelector('#meal-form').reset();
+  document.querySelector('#meal-submit').textContent = 'Dodaj obrok';
+  document.querySelector('#meal-cancel-edit').hidden = true;
+  document.querySelector('#meal-nutrition-error').textContent = '';
+}
+document.querySelector('#meal-cancel-edit').addEventListener('click', resetMealEditor);
 document.querySelector('#meal-form').addEventListener('submit', event => {
   event.preventDefault();
   const input = document.querySelector('#meal-title');
   const value = input.value.trim(); if (!value) return;
   const kind = document.querySelector('#meal-kind').value;
-  state.meals.push({ id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, date: selectedMealDate,
-    kind, text: value, recipeId: currentSuggestion?.kind === kind && currentSuggestion.title === value ? currentSuggestion.id : undefined });
-  input.value = ''; clearSuggestion(); save(); render(); input.focus();
+  const values = Object.fromEntries(Object.entries(nutritionInputs).map(([id, key]) =>
+    [key, document.querySelector(`#meal-${id}`).value === '' ? null : Number(document.querySelector(`#meal-${id}`).value)]));
+  const anyMacro = ['kcal', 'proteinG', 'carbsG', 'fatG'].some(key => values[key] !== null);
+  if (anyMacro && ['kcal', 'proteinG', 'carbsG', 'fatG'].some(key => values[key] === null)) {
+    document.querySelector('#meal-nutrition-error').textContent = 'Za seštevek izpolni vse štiri hranilne vrednosti.';
+    return;
+  }
+  const existing = state.meals.find(item => item.id === editingMealId && item.date === selectedMealDate);
+  const meal = existing || { id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, date: selectedMealDate };
+  meal.kind = kind; meal.text = value;
+  meal.recipeId = currentSuggestion?.kind === kind && currentSuggestion.title === value ? currentSuggestion.id
+    : existing?.recipeId && mealRecipes.some(recipe => recipe.id === existing.recipeId && recipe.title === value) ? existing.recipeId : undefined;
+  meal.nutrition = anyMacro ? { ...values, source: photoNutritionPending ? 'photo-estimate'
+    : recipeNutritionPending ? 'recipe-estimate' : 'manual' } : null;
+  if (!existing) state.meals.push(meal);
+  resetMealEditor(); clearSuggestion(); save(); render(); input.focus();
 });
 const mealPhotoInput = document.querySelector('#meal-photo-input');
 document.querySelector('.meal-photo').hidden = !window.MEAL_VISION_ENDPOINT;
@@ -338,6 +385,10 @@ const mealPhotoStatus = document.querySelector('#meal-photo-status');
 const mealPhotoAnalyze = document.querySelector('#meal-photo-analyze');
 let mealPhotoUrl = null;
 mealPhotoInput.addEventListener('change', () => {
+  if (photoNutritionPending) {
+    for (const id of Object.keys(nutritionInputs)) document.querySelector(`#meal-${id}`).value = '';
+    photoNutritionPending = false;
+  }
   if (mealPhotoUrl) URL.revokeObjectURL(mealPhotoUrl);
   const file = mealPhotoInput.files[0];
   mealPhotoPreview.hidden = !file;
@@ -382,8 +433,15 @@ mealPhotoAnalyze.addEventListener('click', async () => {
     if (!result.title || typeof result.title !== 'string') throw new Error('Jedi na fotografiji ni bilo mogoče prepoznati.');
     document.querySelector('#meal-title').value = result.title.slice(0, 120);
     if (mealKinds[result.kind]) document.querySelector('#meal-kind').value = result.kind;
+    const nutrition = result.nutrition;
+    if (nutrition && ['kcal', 'proteinG', 'carbsG', 'fatG'].every(key => Number.isFinite(nutrition[key]))) {
+      for (const [id, key] of Object.entries(nutritionInputs))
+        document.querySelector(`#meal-${id}`).value = nutrition[key] ?? '';
+      photoNutritionPending = true;
+    } else photoNutritionPending = false;
     clearSuggestion();
-    mealPhotoStatus.textContent = 'Preveri predlagano jed in tapni »Dodaj obrok«.';
+    mealPhotoStatus.textContent = nutrition ? 'Preveri jed, velikost porcije in približne hranilne vrednosti, nato shrani.'
+      : 'Preveri jed in po želji vnesi hranilne vrednosti, nato shrani.';
     document.querySelector('#meal-title').focus();
   } catch (error) {
     mealPhotoStatus.textContent = error.message || 'Prepoznava ni uspela.';
@@ -509,11 +567,32 @@ function suggestMeal() {
 document.querySelector('#suggest-meal').addEventListener('click', suggestMeal);
 document.querySelector('#next-suggestion').addEventListener('click', suggestMeal);
 document.querySelector('#meal-kind').addEventListener('change', clearSuggestion);
-document.querySelector('#use-suggestion').addEventListener('click', () => {
+document.querySelector('#use-suggestion').addEventListener('click', async () => {
   if (!currentSuggestion) return;
-  document.querySelector('#meal-kind').value = currentSuggestion.kind;
-  document.querySelector('#meal-title').value = currentSuggestion.title;
-  document.querySelector('#meal-form').requestSubmit();
+  const recipe = currentSuggestion;
+  photoNutritionPending = false; recipeNutritionPending = false;
+  for (const id of Object.keys(nutritionInputs)) document.querySelector(`#meal-${id}`).value = '';
+  document.querySelector('#meal-kind').value = recipe.kind;
+  document.querySelector('#meal-title').value = recipe.title;
+  const status = document.querySelector('#suggestion-nutrition-status');
+  const button = document.querySelector('#use-suggestion');
+  status.textContent = 'Ocenjujem hranilne vrednosti recepta …'; button.disabled = true;
+  try {
+    const response = await fetch(window.MEAL_VISION_ENDPOINT, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipe: { title: recipe.title, kind: recipe.kind, ingredients: recipe.ingredients } })
+    });
+    if (!response.ok) throw new Error('Ocena trenutno ni na voljo.');
+    const result = await response.json();
+    if (currentSuggestion !== recipe) return;
+    if (result.nutrition) {
+      for (const [id, key] of Object.entries(nutritionInputs))
+        document.querySelector(`#meal-${id}`).value = result.nutrition[key] ?? '';
+      recipeNutritionPending = true; photoNutritionPending = false;
+      status.textContent = 'Preveri približne vrednosti in spodaj shrani obrok.';
+    } else status.textContent = 'Vrednosti lahko vpišeš ročno in spodaj shraniš obrok.';
+  } catch { status.textContent = 'Ocena trenutno ni na voljo. Obrok lahko shraniš brez nje ali vpišeš vrednosti ročno.'; }
+  finally { button.disabled = false; document.querySelector('#meal-title').focus(); }
 });
 
 for (const [buttonId, shift] of [['calendar-prev', -1], ['calendar-next', 1]]) {
@@ -844,6 +923,17 @@ function validatedEntries(entries, kind, backupRoutineDate) {
       if (!validDate(item.date) || !Object.hasOwn(mealKinds, item.kind))
         throw new Error('Kopija vsebuje neveljaven obrok.');
       clean.date = item.date; clean.kind = item.kind;
+      if (item.recipeId != null && typeof item.recipeId === 'string' && mealRecipes.some(recipe => recipe.id === item.recipeId))
+        clean.recipeId = item.recipeId;
+      if (item.nutrition != null) {
+        const n = item.nutrition;
+        if (typeof n !== 'object' || Array.isArray(n) || [['kcal', 10000], ['proteinG', 1000], ['carbsG', 1000], ['fatG', 1000]]
+          .some(([key, max]) => typeof n[key] !== 'number' || !Number.isFinite(n[key]) || n[key] < 0 || n[key] > max)
+          || (n.portionG != null && (typeof n.portionG !== 'number' || !Number.isFinite(n.portionG) || n.portionG < 0 || n.portionG > 5000)))
+          throw new Error('Kopija vsebuje neveljavne hranilne vrednosti.');
+        clean.nutrition = { kcal: n.kcal, proteinG: n.proteinG, carbsG: n.carbsG, fatG: n.fatG,
+          portionG: n.portionG ?? null, source: ['photo-estimate', 'recipe-estimate'].includes(n.source) ? n.source : 'manual' };
+      }
     } else if (kind === 'events') {
       if (!validDate(item.date) || (item.time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(item.time)))
         throw new Error('Kopija vsebuje neveljaven datum ali uro.');

@@ -11,3 +11,5 @@ Frontend ostane na GitHub Pages, ta Worker pa prejme pomanjšano sliko in uporab
 5. Na telefonu v Jedilniku fotografirajte obrok, tapnite »Prepoznaj jed«, preverite predlog in ga dodajte.
 
 Omejitev izvora in velikosti v Workerju preprečuje običajne napačne zahtevke, ni pa zaščita pred namernimi neposrednimi zahtevki. Pred širšo javno objavo dodajte preverjanje Cloudflare Turnstile ali omejevanje zahtevkov na strežniku. Brez nameščenega Workerja ostane možnost fotografiranja skrita; preostali Jedilnik deluje normalno.
+
+Po posodobitvi `worker.js` v Cloudflare urejevalniku ponovno kliknite Deploy; nova različica oceni tudi kalorije in makrohranila iz fotografije ali navedenih sestavin recepta. Vrednosti so informativne in pred shranjevanjem jih uporabnik lahko popravi.
