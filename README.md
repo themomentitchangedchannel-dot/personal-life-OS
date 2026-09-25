@@ -31,4 +31,4 @@ Open `index.html` in a browser, or serve the folder with `python3 -m http.server
 
 ## Current version
 
-The first mobile-friendly dashboard supports adding, completing and deleting tasks and morning routine steps. Data is stored in this browser's `localStorage`; routine checkmarks reset each day in the Europe/Ljubljana time zone. Meal planning, workouts, calendar and expenses are marked as upcoming modules. There are no accounts or cloud sync yet.
+The mobile-friendly dashboard supports adding, completing and deleting tasks and morning routine steps. Tasks can have a date and are grouped into Today (including overdue), Upcoming and All. Existing tasks without a date remain in All. Data is stored in this browser's `localStorage`; routine checkmarks reset each day in the Europe/Ljubljana time zone. Meal planning, workouts, calendar and expenses are marked as upcoming modules. There are no accounts or cloud sync yet.

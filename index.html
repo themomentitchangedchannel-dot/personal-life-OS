@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f7f8f4" />
     <title>Personal Life OS</title>
     <link rel="stylesheet" href="styles.css" />
-    <script src="script.js?v=2" defer></script>
+    <script src="script.js?v=3" defer></script>
   </head>
   <body>
     <div class="shell">
@@ -22,10 +22,10 @@
         </section>
 
         <section class="section" aria-labelledby="overview-title"><div class="section-heading"><div><span class="eyebrow">PREGLED</span><h2 id="overview-title">Danes je tvoj dan</h2></div><span class="date-label" id="full-date"></span></div>
-          <div class="summary-grid"><article class="summary-card coral"><span class="summary-icon">✓</span><span class="summary-number" id="task-count">0/0</span><span class="summary-label">opravljenih opravil</span></article><article class="summary-card lavender"><span class="summary-icon">☀</span><span class="summary-number" id="routine-count">0/0</span><span class="summary-label">korakov rutine</span></article><article class="summary-card mint"><span class="summary-icon">◎</span><span class="summary-number" id="day-progress">0%</span><span class="summary-label">današnji napredek</span></article></div>
+          <div class="summary-grid"><article class="summary-card coral"><span class="summary-icon">✓</span><span class="summary-number" id="task-count">0/0</span><span class="summary-label">današnjih opravil</span></article><article class="summary-card lavender"><span class="summary-icon">☀</span><span class="summary-number" id="routine-count">0/0</span><span class="summary-label">korakov rutine</span></article><article class="summary-card mint"><span class="summary-icon">◎</span><span class="summary-number" id="day-progress">0%</span><span class="summary-label">današnji napredek</span></article></div>
         </section>
 
-        <div class="content-grid"><section class="panel" id="opravila" aria-labelledby="tasks-title"><div class="panel-heading"><div><span class="eyebrow">OSTANI NA TIRU</span><h2 id="tasks-title">Moja opravila</h2></div><span class="panel-symbol" aria-hidden="true">↗</span></div><form id="task-form" class="add-form"><label class="sr-only" for="task-input">Novo opravilo</label><input id="task-input" maxlength="120" placeholder="Dodaj novo opravilo ..." required /><button type="submit" aria-label="Dodaj opravilo">+</button></form><ul class="item-list" id="task-list"></ul><p class="empty" id="task-empty">Začni z enim majhnim opravilom.</p></section>
+        <div class="content-grid"><section class="panel" id="opravila" aria-labelledby="tasks-title"><div class="panel-heading"><div><span class="eyebrow">OSTANI NA TIRU</span><h2 id="tasks-title">Moja opravila</h2></div><span class="panel-symbol" aria-hidden="true">↗</span></div><form id="task-form" class="add-form task-form"><label class="sr-only" for="task-input">Novo opravilo</label><input id="task-input" maxlength="120" placeholder="Dodaj novo opravilo ..." required /><label class="sr-only" for="task-date">Datum opravila</label><input id="task-date" type="date" aria-label="Datum opravila" /><button type="submit" aria-label="Dodaj opravilo">+</button></form><div class="task-filters" role="group" aria-label="Prikaz opravil"><button type="button" data-view="today" aria-pressed="true">Danes</button><button type="button" data-view="upcoming" aria-pressed="false">Prihaja</button><button type="button" data-view="all" aria-pressed="false">Vsa</button></div><ul class="item-list" id="task-list"></ul><p class="empty" id="task-empty">Za danes ni opravil.</p></section>
 
         <section class="panel" id="rutina" aria-labelledby="routine-title"><div class="panel-heading"><div><span class="eyebrow">ZAČNI DOBRO</span><h2 id="routine-title">Jutranja rutina</h2></div><span class="panel-symbol" aria-hidden="true">☀</span></div><form id="routine-form" class="add-form"><label class="sr-only" for="routine-input">Nov korak rutine</label><input id="routine-input" maxlength="120" placeholder="Dodaj korak rutine ..." required /><button type="submit" aria-label="Dodaj korak rutine">+</button></form><ul class="item-list" id="routine-list"></ul><p class="empty" id="routine-empty">Dodaj prvi korak svoje jutranje rutine.</p></section></div>
 
