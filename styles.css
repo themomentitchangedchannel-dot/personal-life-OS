@@ -27,3 +27,6 @@
 @media(max-width:850px){.meal-week{grid-template-columns:repeat(4,minmax(0,1fr))}.meal-day{min-height:105px}.meal-editor{grid-template-columns:1fr}}
 @media(max-width:520px){.meals-card{padding:17px}.meal-week{grid-template-columns:repeat(2,minmax(0,1fr))}.meal-day{min-height:88px}.meal-day:last-child{grid-column:1/-1}.module-grid{grid-template-columns:repeat(2,1fr)}}
 .calendar-dots i.meal-dot,.calendar-legend i.legend-meal,.day-list li .kind.meal{background:#79aa88}
+
+/* Meal suggestions */
+.meal-entry{min-width:0}.meal-suggestion{margin-top:12px}.meal-suggestion>button{width:100%;border:1px solid #9ab89a;border-radius:10px;background:#edf5eb;color:#375840;padding:10px;font:700 12px Manrope,system-ui,sans-serif;cursor:pointer}.meal-suggestion>button:hover{background:#e4f0e0}#suggestion-result{background:#f5f8f2;border:1px solid #dfeade;border-radius:12px;padding:15px;margin-top:9px}#suggestion-result[hidden]{display:none}#suggestion-result p{font-size:15px;font-weight:700;margin:8px 0 13px;color:#334c39}#suggestion-result>div{display:flex;gap:7px;flex-wrap:wrap}#suggestion-result button{border:0;border-radius:9px;padding:9px 11px;background:#304c3d;color:#fff;font:700 11px Manrope,system-ui,sans-serif;cursor:pointer}#suggestion-result #next-suggestion{background:#fff;color:#405b47;border:1px solid #d5e2d3}

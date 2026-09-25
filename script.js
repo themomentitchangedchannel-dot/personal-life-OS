@@ -29,6 +29,12 @@ const dateObject = date => new Date(`${date}T12:00:00Z`);
 const addDays = (date, count) => isoDate(new Date(dateObject(date).getTime() + count * 86400000));
 const longDate = date => new Intl.DateTimeFormat('sl-SI', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(dateObject(date));
 const mealKinds = { breakfast: 'Zajtrk', lunch: 'Kosilo', dinner: 'Večerja', snack: 'Malica' };
+const mealIdeas = {
+  breakfast: ['Ovsena kaša z banano in orehi', 'Jajca na oko s polnozrnatim kruhom', 'Skuta z jagodičevjem', 'Polnozrnat toast z avokadom in jajcem', 'Grški jogurt s sadjem in ovsenimi kosmiči', 'Prosena kaša z jabolkom', 'Omleta s špinačo', 'Polnozrnat kruh s skuto in paradižnikom', 'Palačinke z jogurtom in sadjem', 'Smoothie z banano in ovsenimi kosmiči', 'Kruh z arašidovim maslom in banano', 'Rižev narastek s sadjem'],
+  lunch: ['Piščanec z rižem in zelenjavo', 'Zelenjavna rižota s parmezanom', 'Testenine s tuno in paradižnikom', 'Pečena riba s krompirjem in solato', 'Goveja juha in pražen krompir', 'Fižolova enolončnica', 'Puranje meso z ajdovo kašo', 'Lečina enolončnica', 'Testenine z bolonjsko omako', 'Pečena zelenjava s čičeriko', 'Piščančji zavitek z zelenjavo', 'Gobova rižota', 'Losos s kuskusom in brokolijem', 'Polnjene paprike', 'Zelenjavna lazanja'],
+  dinner: ['Omleta z zelenjavo in solato', 'Piščančja solata s kruhom', 'Zelenjavna juha in toast', 'Tortilja s fižolom in zelenjavo', 'Pečen krompir s skuto', 'Solata s tuno in jajcem', 'Riževa skleda z zelenjavo', 'Polnozrnat sendvič s puranom', 'Skutni namaz z zelenjavo in kruhom', 'Testeninska solata', 'Jajčna fritata z bučkami', 'Domača zelenjavna pita'],
+  snack: ['Banana in pest oreščkov', 'Jabolko in sir', 'Hruška in mandlji', 'Polnozrnat sendvič', 'Jogurt s sadjem', 'Korenček in humus', 'Nektarina in orehi', 'Skuta s sadjem', 'Domača ovsena ploščica', 'Trdo kuhano jajce in sadje', 'Riževi vaflji z arašidovim maslom', 'Grozdje in sir']
+};
 const mealWeekStart = date => addDays(date, -((dateObject(date).getUTCDay() + 6) % 7));
 let selectedMealDate = today();
 let displayedMealWeek = mealWeekStart(today());
@@ -250,7 +256,7 @@ function renderMeals() {
       const chip = document.createElement('span'); chip.className = 'meal-chip';
       chip.textContent = `${mealKinds[meal.kind]}: ${meal.text}`; button.append(chip);
     }
-    button.addEventListener('click', () => { selectedMealDate = date; renderMeals(); });
+    button.addEventListener('click', () => { selectedMealDate = date; clearSuggestion(); renderMeals(); });
     week.append(button);
   }
   document.querySelector('#meal-day-title').textContent = longDate(selectedMealDate);
@@ -273,11 +279,12 @@ for (const [buttonId, shift] of [['meal-prev', -7], ['meal-next', 7]]) {
   document.querySelector(`#${buttonId}`).addEventListener('click', () => {
     displayedMealWeek = addDays(displayedMealWeek, shift);
     selectedMealDate = displayedMealWeek;
+    clearSuggestion();
     renderMeals();
   });
 }
 document.querySelector('#meal-today').addEventListener('click', () => {
-  selectedMealDate = today(); displayedMealWeek = mealWeekStart(today()); renderMeals();
+  selectedMealDate = today(); displayedMealWeek = mealWeekStart(today()); clearSuggestion(); renderMeals();
 });
 document.querySelector('#meal-form').addEventListener('submit', event => {
   event.preventDefault();
@@ -285,7 +292,32 @@ document.querySelector('#meal-form').addEventListener('submit', event => {
   const value = input.value.trim(); if (!value) return;
   state.meals.push({ id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, date: selectedMealDate,
     kind: document.querySelector('#meal-kind').value, text: value });
-  input.value = ''; save(); render(); input.focus();
+  input.value = ''; clearSuggestion(); save(); render(); input.focus();
+});
+let currentSuggestion = null;
+function clearSuggestion() {
+  currentSuggestion = null;
+  document.querySelector('#suggestion-result').hidden = true;
+}
+function suggestMeal() {
+  const kind = document.querySelector('#meal-kind').value;
+  const alreadyPlanned = new Set(state.meals.filter(item => item.date === selectedMealDate).map(item => item.text));
+  const available = mealIdeas[kind].filter(text => text !== currentSuggestion?.text && !alreadyPlanned.has(text));
+  const choices = available.length ? available : mealIdeas[kind].filter(text => text !== currentSuggestion?.text);
+  const text = choices[Math.floor(Math.random() * choices.length)];
+  currentSuggestion = { kind, text };
+  document.querySelector('#suggestion-kind').textContent = `PREDLOG ZA ${mealKinds[kind].toUpperCase()}`;
+  document.querySelector('#suggestion-text').textContent = text;
+  document.querySelector('#suggestion-result').hidden = false;
+}
+document.querySelector('#suggest-meal').addEventListener('click', suggestMeal);
+document.querySelector('#next-suggestion').addEventListener('click', suggestMeal);
+document.querySelector('#meal-kind').addEventListener('change', clearSuggestion);
+document.querySelector('#use-suggestion').addEventListener('click', () => {
+  if (!currentSuggestion) return;
+  document.querySelector('#meal-kind').value = currentSuggestion.kind;
+  document.querySelector('#meal-title').value = currentSuggestion.text;
+  document.querySelector('#meal-form').requestSubmit();
 });
 
 for (const [buttonId, shift] of [['calendar-prev', -1], ['calendar-next', 1]]) {
