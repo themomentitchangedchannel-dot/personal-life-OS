@@ -312,13 +312,17 @@ function renderMeals() {
     }
     const recipe = mealRecipes.find(entry => entry.id === item.recipeId);
     if (recipe) {
-      const details = document.createElement('details'); details.className = 'planned-recipe';
+      const details = document.createElement('details'); details.className = 'planned-recipe'; details.dataset.mealId = item.id;
       const summary = document.createElement('summary'); summary.textContent = 'Recept';
       details.append(summary, recipeContent({ ...recipe, ingredients: item.recipeIngredients || recipe.ingredients }));
       const editRecipe = document.createElement('button'); editRecipe.type = 'button';
       editRecipe.className = 'recipe-edit-button'; editRecipe.textContent = 'Uredi sestavine';
       editRecipe.addEventListener('click', () => showRecipeEditor(details, item, recipe));
-      details.append(editRecipe); row.append(details);
+      const estimate = document.createElement('button'); estimate.type = 'button';
+      estimate.className = 'recipe-edit-button'; estimate.textContent = 'Oceni kalorije in makrohranila';
+      estimate.addEventListener('click', () => estimatePlannedRecipe(item, recipe));
+      const status = document.createElement('p'); status.className = 'recipe-nutrition-status'; status.setAttribute('role', 'status');
+      details.append(editRecipe, estimate, status); row.append(details);
     }
     const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'meal-edit'; edit.textContent = 'Uredi';
     edit.setAttribute('aria-label', `Uredi obrok: ${item.text}`);
@@ -538,6 +542,36 @@ function recipeContent(recipe) {
   container.append(info, ingredientsTitle, ingredients, stepsTitle, steps);
   return container;
 }
+async function estimatePlannedRecipe(meal, recipe) {
+  const ingredients = [...(meal.recipeIngredients || recipe.ingredients)];
+  const details = [...document.querySelectorAll('.planned-recipe')]
+    .find(element => element.dataset.mealId === meal.id);
+  const status = details?.querySelector('.recipe-nutrition-status');
+  const button = details?.querySelectorAll('.recipe-edit-button')[1];
+  if (!window.MEAL_VISION_ENDPOINT) {
+    if (status) status.textContent = 'Ocena ni na voljo. Hranilne vrednosti lahko vneseš ročno prek gumba Uredi obrok.';
+    return;
+  }
+  if (button) button.disabled = true;
+  if (status) status.textContent = 'Ocenjujem sestavine …';
+  try {
+    const response = await fetch(window.MEAL_VISION_ENDPOINT, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipe: { title: meal.text, kind: meal.kind, ingredients } })
+    });
+    if (!response.ok) throw new Error('Storitev za ocenjevanje ni na voljo.');
+    const result = await response.json();
+    const n = result.nutrition;
+    if (!n || ['kcal', 'proteinG', 'carbsG', 'fatG'].some(key => !Number.isFinite(n[key]) || n[key] < 0))
+      throw new Error('Za te sestavine ocena ni mogoča.');
+    if (!state.meals.includes(meal) || JSON.stringify(meal.recipeIngredients || recipe.ingredients) !== JSON.stringify(ingredients)) return;
+    meal.nutrition = { kcal: n.kcal, proteinG: n.proteinG, carbsG: n.carbsG, fatG: n.fatG,
+      portionG: Number.isFinite(n.portionG) ? n.portionG : null, source: 'recipe-estimate' };
+    save(); render();
+  } catch (error) {
+    if (status) status.textContent = `${error.message} Preveri Worker ali vrednosti vpiši ročno prek Uredi obrok.`;
+  } finally { if (button) button.disabled = false; }
+}
 function showRecipeEditor(details, meal, recipe) {
   details.querySelector('.recipe-ingredient-editor')?.remove();
   const form = document.createElement('form'); form.className = 'recipe-ingredient-editor';
@@ -563,12 +597,14 @@ function showRecipeEditor(details, meal, recipe) {
   form.addEventListener('submit', event => {
     event.preventDefault();
     const ingredients = [...rows.querySelectorAll('input')].map(input => input.value.trim());
-    if (!ingredients.length || ingredients.some(value => !value) || ingredients.length > 40) {
+    if (!ingredients.length || ingredients.some(value => !value) || ingredients.length > 20) {
+      if (ingredients.length > 20) note.textContent = 'Recept lahko vsebuje največ 20 sestavin.';
       rows.querySelector('input:invalid')?.focus(); return;
     }
     meal.recipeIngredients = ingredients;
     meal.nutrition = null;
     save(); render();
+    estimatePlannedRecipe(meal, recipe);
   });
   details.append(form); add.focus();
 }
@@ -966,7 +1002,7 @@ function validatedEntries(entries, kind, backupRoutineDate) {
       if (item.recipeId != null && typeof item.recipeId === 'string' && mealRecipes.some(recipe => recipe.id === item.recipeId))
         clean.recipeId = item.recipeId;
       if (clean.recipeId && item.recipeIngredients != null) {
-        if (!Array.isArray(item.recipeIngredients) || !item.recipeIngredients.length || item.recipeIngredients.length > 40
+        if (!Array.isArray(item.recipeIngredients) || !item.recipeIngredients.length || item.recipeIngredients.length > 20
           || item.recipeIngredients.some(value => typeof value !== 'string' || !value.trim() || value.length > 120))
           throw new Error('Kopija vsebuje neveljavne sestavine recepta.');
         clean.recipeIngredients = item.recipeIngredients.map(value => value.trim());
