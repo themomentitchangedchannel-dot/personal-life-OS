@@ -7,6 +7,7 @@ try {
   state = saved && Array.isArray(saved.tasks) && Array.isArray(saved.routine) ? saved : initial;
 } catch { state = initial; }
 if (!Array.isArray(state.events)) state.events = [];
+if (!Array.isArray(state.meals)) state.meals = [];
 if (state.routineDate !== today()) {
   state.routine = state.routine.map(item => ({ ...item, done: false }));
   state.routineDate = today();
@@ -25,7 +26,12 @@ let selectedDate = today();
 let displayedMonth = selectedDate.slice(0, 7);
 const isoDate = date => date.toISOString().slice(0, 10);
 const dateObject = date => new Date(`${date}T12:00:00Z`);
+const addDays = (date, count) => isoDate(new Date(dateObject(date).getTime() + count * 86400000));
 const longDate = date => new Intl.DateTimeFormat('sl-SI', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(dateObject(date));
+const mealKinds = { breakfast: 'Zajtrk', lunch: 'Kosilo', dinner: 'Večerja', snack: 'Malica' };
+const mealWeekStart = date => addDays(date, -((dateObject(date).getUTCDay() + 6) % 7));
+let selectedMealDate = today();
+let displayedMealWeek = mealWeekStart(today());
 
 const isRecurring = item => !!item.recurrence;
 const dayNumber = date => (dateObject(date).getUTCDay() + 6) % 7;
@@ -132,6 +138,7 @@ function renderList(kind) {
 function render() {
   renderList('tasks'); renderList('routine');
   renderCalendar();
+  renderMeals();
   const dueToday = state.tasks.filter(item => isRecurring(item) ? occursOn(item, today()) : item.date && item.date <= today());
   const tasksDone = dueToday.filter(item => isRecurring(item) ? (item.completedDates || []).includes(today()) : item.done).length;
   const routineDone = state.routine.filter(item => item.done).length;
@@ -170,12 +177,14 @@ function renderCalendar() {
     if (key === selectedDate) button.classList.add('selected');
     const tasks = tasksForDate(key).length;
     const events = state.events.filter(item => item.date === key).length;
-    if (tasks || events) {
+    const meals = state.meals.filter(item => item.date === key).length;
+    if (tasks || events || meals) {
       const dots = document.createElement('span'); dots.className = 'calendar-dots';
       if (tasks) { const dot = document.createElement('i'); dots.append(dot); }
       if (events) { const dot = document.createElement('i'); dot.className = 'event-dot'; dots.append(dot); }
+      if (meals) { const dot = document.createElement('i'); dot.className = 'meal-dot'; dots.append(dot); }
       button.append(dots);
-      button.setAttribute('aria-label', `${longDate(key)}: ${tasks} opravil, ${events} dogodkov`);
+      button.setAttribute('aria-label', `${longDate(key)}: ${tasks} opravil, ${events} dogodkov, ${meals} obrokov`);
     }
     button.addEventListener('click', () => { selectedDate = key; displayedMonth = key.slice(0, 7); renderCalendar(); });
     grid.append(button);
@@ -184,12 +193,14 @@ function renderCalendar() {
   const dayList = document.querySelector('#day-list'); dayList.replaceChildren();
   const entries = [
     ...tasksForDate(selectedDate).map(({ item, done }) => ({ ...item, done, kind: 'task' })),
-    ...state.events.filter(item => item.date === selectedDate).map(item => ({ ...item, kind: 'event' }))
+    ...state.events.filter(item => item.date === selectedDate).map(item => ({ ...item, kind: 'event' })),
+    ...state.meals.filter(item => item.date === selectedDate).map(item => ({ ...item,
+      text: `${mealKinds[item.kind]}: ${item.text}`, kind: 'meal' }))
   ].sort((a, b) => (a.time || a.timeStart || '99:99').localeCompare(b.time || b.timeStart || '99:99'));
   for (const item of entries) {
     const row = document.createElement('li');
     if (item.done) row.classList.add('completed');
-    const marker = document.createElement('span'); marker.className = `kind ${item.kind === 'event' ? 'event' : ''}`;
+    const marker = document.createElement('span'); marker.className = `kind ${item.kind === 'event' ? 'event' : item.kind === 'meal' ? 'meal' : ''}`;
     const title = document.createElement('span'); title.className = 'day-title'; title.textContent = item.text;
     if (item.kind === 'task') {
       const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = item.done;
@@ -221,6 +232,62 @@ function renderCalendar() {
   document.querySelector('#day-empty').hidden = entries.length > 0;
 }
 
+function renderMeals() {
+  const end = addDays(displayedMealWeek, 6);
+  document.querySelector('#meal-week-title').textContent = `${dateText(displayedMealWeek)} – ${dateText(end)}`;
+  const week = document.querySelector('#meal-week'); week.replaceChildren();
+  const weekdayNames = ['Pon', 'Tor', 'Sre', 'Čet', 'Pet', 'Sob', 'Ned'];
+  for (let offset = 0; offset < 7; offset++) {
+    const date = addDays(displayedMealWeek, offset);
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'meal-day';
+    button.setAttribute('aria-label', longDate(date));
+    button.setAttribute('aria-pressed', String(date === selectedMealDate));
+    const heading = document.createElement('strong'); heading.textContent = weekdayNames[offset];
+    const number = document.createElement('small'); number.textContent = dateText(date);
+    button.append(heading, number);
+    for (const meal of state.meals.filter(item => item.date === date)
+      .sort((a, b) => Object.keys(mealKinds).indexOf(a.kind) - Object.keys(mealKinds).indexOf(b.kind))) {
+      const chip = document.createElement('span'); chip.className = 'meal-chip';
+      chip.textContent = `${mealKinds[meal.kind]}: ${meal.text}`; button.append(chip);
+    }
+    button.addEventListener('click', () => { selectedMealDate = date; renderMeals(); });
+    week.append(button);
+  }
+  document.querySelector('#meal-day-title').textContent = longDate(selectedMealDate);
+  const list = document.querySelector('#meal-list'); list.replaceChildren();
+  const entries = state.meals.filter(item => item.date === selectedMealDate)
+    .sort((a, b) => Object.keys(mealKinds).indexOf(a.kind) - Object.keys(mealKinds).indexOf(b.kind));
+  for (const item of entries) {
+    const row = document.createElement('li');
+    const kind = document.createElement('span'); kind.className = 'meal-kind'; kind.textContent = mealKinds[item.kind];
+    const title = document.createElement('span'); title.className = 'meal-name'; title.textContent = item.text;
+    const remove = document.createElement('button'); remove.className = 'remove'; remove.type = 'button'; remove.textContent = '×';
+    remove.setAttribute('aria-label', `Odstrani obrok: ${item.text}`);
+    remove.addEventListener('click', () => { state.meals = state.meals.filter(meal => meal.id !== item.id); save(); render(); });
+    row.append(kind, title, remove); list.append(row);
+  }
+  document.querySelector('#meal-empty').hidden = entries.length > 0;
+}
+
+for (const [buttonId, shift] of [['meal-prev', -7], ['meal-next', 7]]) {
+  document.querySelector(`#${buttonId}`).addEventListener('click', () => {
+    displayedMealWeek = addDays(displayedMealWeek, shift);
+    selectedMealDate = displayedMealWeek;
+    renderMeals();
+  });
+}
+document.querySelector('#meal-today').addEventListener('click', () => {
+  selectedMealDate = today(); displayedMealWeek = mealWeekStart(today()); renderMeals();
+});
+document.querySelector('#meal-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const input = document.querySelector('#meal-title');
+  const value = input.value.trim(); if (!value) return;
+  state.meals.push({ id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, date: selectedMealDate,
+    kind: document.querySelector('#meal-kind').value, text: value });
+  input.value = ''; save(); render(); input.focus();
+});
+
 for (const [buttonId, shift] of [['calendar-prev', -1], ['calendar-next', 1]]) {
   document.querySelector(`#${buttonId}`).addEventListener('click', () => {
     const date = dateObject(`${displayedMonth}-01`);
@@ -247,7 +314,7 @@ const backupStatus = document.querySelector('#backup-status');
 let pendingImport = null;
 document.querySelector('#backup-export').addEventListener('click', () => {
   const backup = { format: 'personal-life-os', version: 1, exportedAt: new Date().toISOString(),
-    routineDate: state.routineDate, tasks: state.tasks, routine: state.routine, events: state.events };
+    routineDate: state.routineDate, tasks: state.tasks, routine: state.routine, events: state.events, meals: state.meals };
   const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
   const link = document.createElement('a');
   link.href = url; link.download = `personal-life-os-${today()}.json`;
@@ -265,7 +332,11 @@ function validatedEntries(entries, kind, backupRoutineDate) {
     if (!item || typeof item.id !== 'string' || !item.id || typeof item.text !== 'string'
       || !item.text.trim() || item.text.length > 120) throw new Error('Kopija vsebuje neveljaven vnos.');
     const clean = { id: item.id, text: item.text.trim() };
-    if (kind === 'events') {
+    if (kind === 'meals') {
+      if (!validDate(item.date) || !Object.hasOwn(mealKinds, item.kind))
+        throw new Error('Kopija vsebuje neveljaven obrok.');
+      clean.date = item.date; clean.kind = item.kind;
+    } else if (kind === 'events') {
       if (!validDate(item.date) || (item.time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(item.time)))
         throw new Error('Kopija vsebuje neveljaven datum ali uro.');
       clean.date = item.date; clean.time = item.time || '';
@@ -307,12 +378,12 @@ document.querySelector('#backup-file').addEventListener('change', async event =>
     const backup = JSON.parse(await file.text());
     if (backup?.format !== 'personal-life-os' || backup.version !== 1)
       throw new Error('Ta datoteka ni podprta kopija Personal Life OS.');
-    pendingImport = Object.fromEntries(['tasks', 'routine', 'events'].map(kind => [kind,
-      validatedEntries(backup[kind], kind, backup.routineDate)]));
-    const counts = ['tasks', 'routine', 'events'].map(kind =>
+    pendingImport = Object.fromEntries(['tasks', 'routine', 'events', 'meals'].map(kind => [kind,
+      validatedEntries(kind === 'meals' && backup.meals == null ? [] : backup[kind], kind, backup.routineDate)]));
+    const counts = ['tasks', 'routine', 'events', 'meals'].map(kind =>
       pendingImport[kind].filter(item => !state[kind].some(existing => existing.id === item.id)).length);
     document.querySelector('#import-summary').textContent =
-      `Za dodajanje: ${counts[0]} opravil, ${counts[1]} korakov rutine, ${counts[2]} dogodkov. Obstoječi vnosi ostanejo.`;
+      `Za dodajanje: ${counts[0]} opravil, ${counts[1]} korakov rutine, ${counts[2]} dogodkov, ${counts[3]} obrokov. Obstoječi vnosi ostanejo.`;
     document.querySelector('#import-preview').hidden = false;
   } catch (error) { backupStatus.textContent = error instanceof Error ? error.message : 'Datoteke ni mogoče prebrati.'; }
   event.target.value = '';
@@ -322,7 +393,7 @@ document.querySelector('#backup-cancel').addEventListener('click', () => {
 });
 document.querySelector('#backup-import').addEventListener('click', () => {
   if (!pendingImport) return;
-  for (const kind of ['tasks', 'routine', 'events']) {
+  for (const kind of ['tasks', 'routine', 'events', 'meals']) {
     const ids = new Set(state[kind].map(item => item.id));
     for (const item of pendingImport[kind]) if (!ids.has(item.id)) { state[kind].push(item); ids.add(item.id); }
   }
