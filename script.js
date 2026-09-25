@@ -451,6 +451,7 @@ function renderCheckin() {
   const { waterMl, steps, notified } = state.dailyCheckin;
   const { waterGoalMl, stepsGoal } = state.checkinSettings;
   document.querySelector('#water-total').textContent = `${(waterMl / 1000).toLocaleString('sl-SI', { maximumFractionDigits: 2 })} L`;
+  document.querySelector('#home-water-total').textContent = document.querySelector('#water-total').textContent;
   document.querySelector('#steps-total').textContent = steps.toLocaleString('sl-SI');
   document.querySelector('#water-target').textContent = waterGoalMl
     ? `Cilj: ${(waterGoalMl / 1000).toLocaleString('sl-SI', { maximumFractionDigits: 2 })} L` : 'Določi svoj dnevni cilj.';
@@ -495,6 +496,19 @@ document.querySelector('#water-small').addEventListener('click', () => {
 document.querySelector('#water-large').addEventListener('click', () => {
   refreshDailyCheckin(); state.dailyCheckin.waterMl = Math.min(20000, state.dailyCheckin.waterMl + 500); save(); renderCheckin();
 });
+document.querySelector('#home-water-toggle').addEventListener('click', () => {
+  const options = document.querySelector('#home-water-options');
+  options.hidden = !options.hidden;
+  document.querySelector('#home-water-toggle').setAttribute('aria-expanded', String(!options.hidden));
+});
+document.querySelectorAll('[data-water-amount]').forEach(button => button.addEventListener('click', () => {
+  refreshDailyCheckin(); state.dailyCheckin.waterMl = Math.min(20000, state.dailyCheckin.waterMl + Number(button.dataset.waterAmount));
+  save(); renderCheckin();
+  document.querySelector('#home-water-options').hidden = true;
+  document.querySelector('#home-water-toggle').setAttribute('aria-expanded', 'false');
+  document.querySelector('#home-water-status').textContent = `Danes: ${document.querySelector('#home-water-total').textContent} vode.`;
+  document.querySelector('#home-water-toggle').focus();
+}));
 document.querySelector('#water-set').addEventListener('click', () => {
   const input = document.querySelector('#water-entry');
   if (!input.value || !input.checkValidity()) return;

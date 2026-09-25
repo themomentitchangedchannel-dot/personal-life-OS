@@ -60,3 +60,6 @@ main>.checkin-section[data-tab-view="rutina"]{margin-top:30px}
 
 /* Notification controls */
 .notification-actions{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:5px}.reminder-panel .notification-actions #notification-permission{margin:0}.reminder-panel .notification-actions #disable-reminders{background:#fff;color:#765d52;border:1px solid #decfc5}
+
+/* Quick water entry on Home */
+.home-water{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:18px}.home-water button{border:1px solid #bbd4bf;background:#eef7ee;color:#31533c;border-radius:11px;padding:11px 14px;font:700 12px Manrope,system-ui,sans-serif;cursor:pointer}.home-water #home-water-toggle{display:flex;align-items:center;gap:9px;background:#304c3d;color:#fff;border-color:#304c3d}.home-water #home-water-total{font-size:13px;margin-left:5px}.home-water #home-water-options{display:flex;gap:7px;flex-wrap:wrap}.home-water #home-water-options[hidden]{display:none!important}.home-water #home-water-options button:hover{background:#dceedd}
