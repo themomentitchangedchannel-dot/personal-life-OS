@@ -314,7 +314,11 @@ function renderMeals() {
     if (recipe) {
       const details = document.createElement('details'); details.className = 'planned-recipe';
       const summary = document.createElement('summary'); summary.textContent = 'Recept';
-      details.append(summary, recipeContent(recipe)); row.append(details);
+      details.append(summary, recipeContent({ ...recipe, ingredients: item.recipeIngredients || recipe.ingredients }));
+      const editRecipe = document.createElement('button'); editRecipe.type = 'button';
+      editRecipe.className = 'recipe-edit-button'; editRecipe.textContent = 'Uredi sestavine';
+      editRecipe.addEventListener('click', () => showRecipeEditor(details, item, recipe));
+      details.append(editRecipe); row.append(details);
     }
     const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'meal-edit'; edit.textContent = 'Uredi';
     edit.setAttribute('aria-label', `Uredi obrok: ${item.text}`);
@@ -368,10 +372,12 @@ document.querySelector('#meal-form').addEventListener('submit', event => {
     return;
   }
   const existing = state.meals.find(item => item.id === editingMealId && item.date === selectedMealDate);
+  const previousRecipeId = existing?.recipeId;
   const meal = existing || { id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, date: selectedMealDate };
   meal.kind = kind; meal.text = value;
   meal.recipeId = currentSuggestion?.kind === kind && currentSuggestion.title === value ? currentSuggestion.id
     : existing?.recipeId && mealRecipes.some(recipe => recipe.id === existing.recipeId && recipe.title === value) ? existing.recipeId : undefined;
+  if (existing && meal.recipeId !== previousRecipeId) delete meal.recipeIngredients;
   meal.nutrition = anyMacro ? { ...values, source: photoNutritionPending ? 'photo-estimate'
     : recipeNutritionPending ? 'recipe-estimate' : 'manual' } : null;
   if (!existing) state.meals.push(meal);
@@ -531,6 +537,40 @@ function recipeContent(recipe) {
   recipe.steps.forEach(text => { const item = document.createElement('li'); item.textContent = text; steps.append(item); });
   container.append(info, ingredientsTitle, ingredients, stepsTitle, steps);
   return container;
+}
+function showRecipeEditor(details, meal, recipe) {
+  details.querySelector('.recipe-ingredient-editor')?.remove();
+  const form = document.createElement('form'); form.className = 'recipe-ingredient-editor';
+  const heading = document.createElement('strong'); heading.textContent = 'Sestavine za ta obrok'; form.append(heading);
+  const rows = document.createElement('div'); rows.className = 'recipe-ingredient-rows'; form.append(rows);
+  const addRow = (value = '') => {
+    const row = document.createElement('div'); row.className = 'recipe-ingredient-row';
+    const input = document.createElement('input'); input.type = 'text'; input.required = true;
+    input.maxLength = 120; input.value = value; input.placeholder = 'Npr. 150 g piščanca';
+    input.setAttribute('aria-label', 'Količina in sestavina');
+    const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Odstrani';
+    remove.addEventListener('click', () => row.remove()); row.append(input, remove); rows.append(row);
+    return input;
+  };
+  (meal.recipeIngredients || recipe.ingredients).forEach(addRow);
+  const add = document.createElement('button'); add.type = 'button'; add.textContent = '+ Dodaj sestavino';
+  add.addEventListener('click', () => addRow().focus());
+  const saveButton = document.createElement('button'); saveButton.type = 'submit'; saveButton.textContent = 'Shrani recept';
+  const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Prekliči';
+  cancel.addEventListener('click', () => form.remove());
+  const note = document.createElement('p'); note.textContent = 'Količino spremeni neposredno v besedilu sestavine.';
+  form.append(note, add, saveButton, cancel);
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const ingredients = [...rows.querySelectorAll('input')].map(input => input.value.trim());
+    if (!ingredients.length || ingredients.some(value => !value) || ingredients.length > 40) {
+      rows.querySelector('input:invalid')?.focus(); return;
+    }
+    meal.recipeIngredients = ingredients;
+    meal.nutrition = null;
+    save(); render();
+  });
+  details.append(form); add.focus();
 }
 function suggestMeal() {
   const kind = document.querySelector('#meal-kind').value;
@@ -925,6 +965,12 @@ function validatedEntries(entries, kind, backupRoutineDate) {
       clean.date = item.date; clean.kind = item.kind;
       if (item.recipeId != null && typeof item.recipeId === 'string' && mealRecipes.some(recipe => recipe.id === item.recipeId))
         clean.recipeId = item.recipeId;
+      if (clean.recipeId && item.recipeIngredients != null) {
+        if (!Array.isArray(item.recipeIngredients) || !item.recipeIngredients.length || item.recipeIngredients.length > 40
+          || item.recipeIngredients.some(value => typeof value !== 'string' || !value.trim() || value.length > 120))
+          throw new Error('Kopija vsebuje neveljavne sestavine recepta.');
+        clean.recipeIngredients = item.recipeIngredients.map(value => value.trim());
+      }
       if (item.nutrition != null) {
         const n = item.nutrition;
         if (typeof n !== 'object' || Array.isArray(n) || [['kcal', 10000], ['proteinG', 1000], ['carbsG', 1000], ['fatG', 1000]]
