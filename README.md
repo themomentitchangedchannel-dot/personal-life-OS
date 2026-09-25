@@ -25,8 +25,10 @@ One place to manage the most important parts of daily life without jumping betwe
 - Built so additional modules can be added later
 - Prepared for a broader international audience
 
-## Status
+## Run locally
 
-🚧 Early development
+Open `index.html` in a browser, or serve the folder with `python3 -m http.server 8000` and visit `http://localhost:8000`.
 
-This repository will contain the source code and documentation for Personal Life OS.
+## Current version
+
+The first mobile-friendly dashboard supports adding, completing and deleting tasks and morning routine steps. Data is stored in this browser's `localStorage`; routine checkmarks reset each day in the Europe/Ljubljana time zone. Meal planning, workouts, calendar and expenses are marked as upcoming modules. There are no accounts or cloud sync yet.
