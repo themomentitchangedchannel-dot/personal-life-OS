@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f7f8f4" />
     <title>Personal Life OS</title>
-    <link rel="stylesheet" href="styles.css?v=9" />
-    <script src="script.js?v=10" defer></script>
+    <link rel="stylesheet" href="styles.css?v=10" />
+    <script src="script.js?v=11" defer></script>
   </head>
   <body>
     <div class="shell">
@@ -21,6 +21,7 @@
         <a href="#rutina" data-tab="rutina">Rutina</a>
         <a href="#koledar" data-tab="koledar">Koledar</a>
         <a href="#jedilnik" data-tab="jedilnik">Jedilnik</a>
+        <a href="#napredek" data-tab="napredek">Napredek</a>
         <a href="#podatki" data-tab="podatki">Podatki</a>
       </nav>
 
@@ -41,6 +42,25 @@
         <section class="section calendar-section" data-tab-view="koledar" id="koledar" aria-labelledby="calendar-title"><div class="section-heading"><div><span class="eyebrow">NAČRTUJ NAPREJ</span><h2 id="calendar-title">Koledar</h2></div></div><div class="calendar-layout"><div class="calendar-card"><div class="calendar-toolbar"><h3 id="calendar-month"></h3><div><button type="button" id="calendar-prev" aria-label="Prejšnji mesec">‹</button><button type="button" id="calendar-today">Danes</button><button type="button" id="calendar-next" aria-label="Naslednji mesec">›</button></div></div><div class="calendar-grid" id="calendar-grid" aria-label="Mesečni koledar"></div><div class="calendar-legend"><span><i class="legend-task"></i> Opravilo</span><span><i class="legend-event"></i> Dogodek</span><span><i class="legend-meal"></i> Obrok</span></div></div><div class="calendar-day panel"><span class="eyebrow">IZBRANI DAN</span><h3 id="selected-day-title"></h3><ul class="day-list" id="day-list"></ul><p class="empty" id="day-empty">Za ta dan še ni vnosov.</p><form id="event-form" class="event-form"><label for="event-title">Dodaj dogodek</label><input id="event-title" maxlength="120" placeholder="Npr. pregled pri zdravniku" required /><div><label class="sr-only" for="event-time">Ura dogodka</label><input id="event-time" type="time" aria-label="Ura dogodka" /><button type="submit">Dodaj dogodek</button></div></form></div></div></section>
 
         <section class="section meals-section" data-tab-view="jedilnik" id="jedilnik" aria-labelledby="meals-title"><div class="section-heading"><div><span class="eyebrow">KAJ BO NA MIZI?</span><h2 id="meals-title">Tedenski jedilnik</h2></div></div><div class="meals-card"><div class="calendar-toolbar"><h3 id="meal-week-title"></h3><div><button type="button" id="meal-prev" aria-label="Prejšnji teden">‹</button><button type="button" id="meal-today">Ta teden</button><button type="button" id="meal-next" aria-label="Naslednji teden">›</button></div></div><div class="meal-week" id="meal-week" aria-label="Tedenski pregled obrokov"></div><div class="meal-editor"><div><span class="eyebrow">IZBRANI DAN</span><h3 id="meal-day-title"></h3><ul id="meal-list" class="meal-list"></ul><p class="empty" id="meal-empty">Za ta dan še ni načrtovanih obrokov.</p></div><div class="meal-entry"><form id="meal-form" class="meal-form"><label for="meal-kind">Vrsta obroka</label><select id="meal-kind"><option value="breakfast">Zajtrk</option><option value="lunch">Kosilo</option><option value="dinner">Večerja</option><option value="snack">Malica</option></select><label for="meal-title">Kaj boš jedel?</label><input id="meal-title" maxlength="120" placeholder="Npr. piščanec z rižem" required /><button type="submit">Dodaj obrok</button></form><div class="meal-suggestion"><button type="button" id="suggest-meal">Predlagaj mi obrok ✨</button><div id="suggestion-result" hidden><span class="eyebrow" id="suggestion-kind">PREDLOG</span><p id="suggestion-text"></p><div><button type="button" id="use-suggestion">Dodaj predlog v jedilnik</button><button type="button" id="next-suggestion">Drug predlog</button></div></div></div></div></div></div></section>
+
+        <section class="section progress-section" data-tab-view="napredek" id="napredek" aria-labelledby="progress-title">
+          <div class="section-heading"><div><span class="eyebrow">SPREMLJAJ SPREMEMBE</span><h2 id="progress-title">Moj napredek</h2></div></div>
+          <div class="progress-layout">
+            <div class="panel"><h3>Osnovni podatki</h3><form id="profile-form" class="progress-form">
+              <label>Ime <span>(neobvezno)</span><input name="name" maxlength="80" autocomplete="nickname" placeholder="Kako naj te kličemo?" /></label>
+              <label>Višina (cm) <span>(neobvezno)</span><input name="height" type="number" min="80" max="250" step="0.1" inputmode="decimal" placeholder="npr. 180" /></label>
+              <label>Cilj <span>(neobvezno)</span><input name="goal" maxlength="160" placeholder="npr. več gibanja ali pridobiti mišice" /></label>
+              <button type="submit">Shrani podatke</button><p id="profile-status" role="status" aria-live="polite"></p>
+            </form></div>
+            <div class="panel"><h3>Nova meritev</h3><form id="measurement-form" class="progress-form">
+              <label>Datum<input name="date" type="date" required /></label>
+              <div class="measure-fields"><label>Teža (kg)<input name="weight" type="number" min="20" max="500" step="0.1" inputmode="decimal" placeholder="npr. 85,5" /></label><label>Obseg pasu (cm)<input name="waist" type="number" min="30" max="250" step="0.1" inputmode="decimal" /></label><label>Telesna maščoba (%)<input name="bodyFat" type="number" min="1" max="80" step="0.1" inputmode="decimal" /></label><label>Prsni koš (cm)<input name="chest" type="number" min="40" max="250" step="0.1" inputmode="decimal" /></label><label>Boki (cm)<input name="hips" type="number" min="40" max="250" step="0.1" inputmode="decimal" /></label><label>Nadlaket (cm)<input name="arm" type="number" min="15" max="100" step="0.1" inputmode="decimal" /></label><label>Stegno (cm)<input name="thigh" type="number" min="25" max="150" step="0.1" inputmode="decimal" /></label><label>Meča (cm)<input name="calf" type="number" min="15" max="100" step="0.1" inputmode="decimal" /></label></div>
+              <p class="progress-hint">Vpiši vsaj eno meritev. Kasneje lahko dodaš novo za isti ali drug datum.</p><button type="submit">Dodaj meritev</button><p class="form-error" id="measurement-error" role="alert" hidden></p>
+            </form></div>
+          </div>
+          <div class="panel progress-history"><h3>Razvoj meritev</h3><div class="progress-summary" id="progress-summary"></div><div class="progress-chart-wrap" id="progress-chart-wrap" hidden><h4>Teža skozi čas</h4><svg id="progress-chart" viewBox="0 0 600 180" role="img" aria-label="Graf gibanja teže" preserveAspectRatio="none"></svg></div><ul id="measurement-list" class="measurement-list"></ul><p class="empty" id="measurement-empty">Dodaj prvo meritev, da vidiš napredek.</p></div>
+          <p class="progress-hint">Osebni podatki in meritve so shranjeni samo v tem brskalniku. Kopijo lahko preneseš v zavihku Podatki.</p>
+        </section>
 
         <section class="section backup-section" data-tab-view="podatki" id="podatki" aria-labelledby="backup-title"><div class="backup-card"><div><span class="eyebrow">TVOJI PODATKI</span><h2 id="backup-title">Vzemi svoje podatke s seboj</h2><p>Podatki so zdaj shranjeni samo v tem brskalniku. Shrani kopijo in jo lahko uvoziš na drugi napravi.</p></div><div class="backup-actions"><button type="button" id="backup-export">Prenesi kopijo</button><label for="backup-file" class="import-button">Izberi kopijo</label><input id="backup-file" type="file" accept=".json,application/json" class="sr-only" /></div><div class="import-preview" id="import-preview" hidden><p id="import-summary"></p><button type="button" id="backup-import">Uvozi podatke</button><button type="button" id="backup-cancel">Prekliči</button></div><p class="backup-status" id="backup-status" role="status" aria-live="polite"></p></div></section>
 

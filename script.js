@@ -8,6 +8,8 @@ try {
 } catch { state = initial; }
 if (!Array.isArray(state.events)) state.events = [];
 if (!Array.isArray(state.meals)) state.meals = [];
+if (!state.profile || typeof state.profile !== 'object' || Array.isArray(state.profile)) state.profile = {};
+if (!Array.isArray(state.measurements)) state.measurements = [];
 if (state.routineDate !== today()) {
   state.routine = state.routine.map(item => ({ ...item, done: false }));
   state.routineDate = today();
@@ -145,6 +147,7 @@ function render() {
   renderList('tasks'); renderList('routine');
   renderCalendar();
   renderMeals();
+  renderProgress();
   const dueToday = state.tasks.filter(item => isRecurring(item) ? occursOn(item, today()) : item.date && item.date <= today());
   const tasksDone = dueToday.filter(item => isRecurring(item) ? (item.completedDates || []).includes(today()) : item.done).length;
   const routineDone = state.routine.filter(item => item.done).length;
@@ -342,11 +345,75 @@ document.querySelector('#event-form').addEventListener('submit', event => {
   save(); render(); input.focus();
 });
 
+const measurementFields = { weight: ['Teža', 'kg', 20, 500], waist: ['Pas', 'cm', 30, 250], bodyFat: ['Telesna maščoba', '%', 1, 80], chest: ['Prsni koš', 'cm', 40, 250], hips: ['Boki', 'cm', 40, 250], arm: ['Nadlaket', 'cm', 15, 100], thigh: ['Stegno', 'cm', 25, 150], calf: ['Meča', 'cm', 15, 100] };
+const measurementForm = document.querySelector('#measurement-form');
+measurementForm.elements.date.value = today();
+const profileForm = document.querySelector('#profile-form');
+for (const key of ['name', 'height', 'goal']) profileForm.elements[key].value = state.profile[key] ?? '';
+profileForm.addEventListener('submit', event => {
+  event.preventDefault();
+  const height = profileForm.elements.height.value;
+  state.profile = { name: profileForm.elements.name.value.trim(), goal: profileForm.elements.goal.value.trim(), height: height ? Number(height) : null };
+  save(); document.querySelector('#profile-status').textContent = 'Osnovni podatki so shranjeni.';
+});
+measurementForm.addEventListener('submit', event => {
+  event.preventDefault();
+  const error = document.querySelector('#measurement-error');
+  const values = {};
+  for (const key of Object.keys(measurementFields)) {
+    const raw = measurementForm.elements[key].value;
+    if (raw !== '') values[key] = Number(raw);
+  }
+  if (!Object.keys(values).length) { error.textContent = 'Vpiši vsaj eno meritev.'; error.hidden = false; return; }
+  error.hidden = true;
+  state.measurements.push({ id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, date: measurementForm.elements.date.value, ...values });
+  measurementForm.reset(); measurementForm.elements.date.value = today();
+  save(); render();
+});
+function renderProgress() {
+  const entries = [...state.measurements].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  const list = document.querySelector('#measurement-list'); list.replaceChildren();
+  document.querySelector('#measurement-empty').hidden = entries.length > 0;
+  for (const item of entries) {
+    const row = document.createElement('li');
+    const date = document.createElement('strong'); date.textContent = longDate(item.date);
+    const details = document.createElement('span');
+    details.textContent = Object.entries(measurementFields).filter(([key]) => item[key] != null)
+      .map(([key, [label, unit]]) => `${label}: ${item[key]} ${unit}`).join(' · ');
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'remove';
+    remove.textContent = '×'; remove.setAttribute('aria-label', `Odstrani meritev: ${longDate(item.date)}`);
+    remove.addEventListener('click', () => { state.measurements = state.measurements.filter(entry => entry.id !== item.id); save(); render(); });
+    row.append(date, details, remove); list.append(row);
+  }
+  const weights = entries.filter(item => Number.isFinite(item.weight)).reverse();
+  const summary = document.querySelector('#progress-summary'); summary.replaceChildren();
+  if (weights.length) {
+    const first = weights[0].weight; const last = weights.at(-1).weight;
+    for (const [label, value] of [['Začetna teža', `${first} kg`], ['Zadnja teža', `${last} kg`], ['Sprememba', `${last > first ? '+' : ''}${Math.round((last - first) * 10) / 10} kg`]]) {
+      const card = document.createElement('div'); const caption = document.createElement('span');
+      caption.textContent = label; const number = document.createElement('strong'); number.textContent = value;
+      card.append(caption, number); summary.append(card);
+    }
+  }
+  const chartWrap = document.querySelector('#progress-chart-wrap'); chartWrap.hidden = weights.length < 2;
+  const chart = document.querySelector('#progress-chart'); chart.replaceChildren();
+  if (weights.length < 2) return;
+  const min = Math.min(...weights.map(item => item.weight)); const max = Math.max(...weights.map(item => item.weight));
+  const range = Math.max(max - min, 1);
+  const points = weights.map((item, index) => [30 + index * 540 / (weights.length - 1), 150 - (item.weight - min) * 120 / range]);
+  const ns = 'http://www.w3.org/2000/svg';
+  const line = document.createElementNS(ns, 'polyline'); line.setAttribute('points', points.map(point => point.join(',')).join(' '));
+  line.setAttribute('fill', 'none'); line.setAttribute('stroke', '#5e8968'); line.setAttribute('stroke-width', '3'); chart.append(line);
+  for (const [x, y] of points) { const dot = document.createElementNS(ns, 'circle'); dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.setAttribute('r', '5'); dot.setAttribute('fill', '#304c3d'); chart.append(dot); }
+  chart.setAttribute('aria-label', `Teža od ${weights[0].weight} kg (${longDate(weights[0].date)}) do ${weights.at(-1).weight} kg (${longDate(weights.at(-1).date)})`);
+}
+
 const backupStatus = document.querySelector('#backup-status');
 let pendingImport = null;
 document.querySelector('#backup-export').addEventListener('click', () => {
   const backup = { format: 'personal-life-os', version: 1, exportedAt: new Date().toISOString(),
-    routineDate: state.routineDate, tasks: state.tasks, routine: state.routine, events: state.events, meals: state.meals };
+    routineDate: state.routineDate, tasks: state.tasks, routine: state.routine, events: state.events, meals: state.meals,
+    profile: state.profile, measurements: state.measurements };
   const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
   const link = document.createElement('a');
   link.href = url; link.download = `personal-life-os-${today()}.json`;
@@ -399,6 +466,32 @@ function validatedEntries(entries, kind, backupRoutineDate) {
     return clean;
   });
 }
+function validatedProfile(profile) {
+  if (profile == null) return {};
+  if (typeof profile !== 'object' || Array.isArray(profile)
+    || (profile.name != null && (typeof profile.name !== 'string' || profile.name.length > 80))
+    || (profile.goal != null && (typeof profile.goal !== 'string' || profile.goal.length > 160))
+    || (profile.height != null && (!Number.isFinite(profile.height) || profile.height < 80 || profile.height > 250)))
+    throw new Error('Kopija vsebuje neveljavne osnovne podatke.');
+  return { name: (profile.name || '').trim(), goal: (profile.goal || '').trim(), height: profile.height ?? null };
+}
+function validatedMeasurements(entries) {
+  if (entries == null) return [];
+  if (!Array.isArray(entries) || entries.length > 5000) throw new Error('Neveljavno število meritev.');
+  return entries.map(item => {
+    if (!item || typeof item.id !== 'string' || !item.id || !validDate(item.date))
+      throw new Error('Kopija vsebuje neveljaven datum meritve.');
+    const clean = { id: item.id, date: item.date };
+    for (const [key, [, , min, max]] of Object.entries(measurementFields)) {
+      if (item[key] == null) continue;
+      if (!Number.isFinite(item[key]) || item[key] < min || item[key] > max)
+        throw new Error('Kopija vsebuje neveljavno meritev.');
+      clean[key] = item[key];
+    }
+    if (Object.keys(clean).length === 2) throw new Error('Kopija vsebuje prazno meritev.');
+    return clean;
+  });
+}
 document.querySelector('#backup-file').addEventListener('change', async event => {
   pendingImport = null;
   document.querySelector('#import-preview').hidden = true;
@@ -412,10 +505,12 @@ document.querySelector('#backup-file').addEventListener('change', async event =>
       throw new Error('Ta datoteka ni podprta kopija Personal Life OS.');
     pendingImport = Object.fromEntries(['tasks', 'routine', 'events', 'meals'].map(kind => [kind,
       validatedEntries(kind === 'meals' && backup.meals == null ? [] : backup[kind], kind, backup.routineDate)]));
+    pendingImport.profile = validatedProfile(backup.profile);
+    pendingImport.measurements = validatedMeasurements(backup.measurements);
     const counts = ['tasks', 'routine', 'events', 'meals'].map(kind =>
       pendingImport[kind].filter(item => !state[kind].some(existing => existing.id === item.id)).length);
     document.querySelector('#import-summary').textContent =
-      `Za dodajanje: ${counts[0]} opravil, ${counts[1]} korakov rutine, ${counts[2]} dogodkov, ${counts[3]} obrokov. Obstoječi vnosi ostanejo.`;
+      `Za dodajanje: ${counts[0]} opravil, ${counts[1]} korakov rutine, ${counts[2]} dogodkov, ${counts[3]} obrokov, ${pendingImport.measurements.filter(item => !state.measurements.some(existing => existing.id === item.id)).length} meritev. Osnovni podatki iz kopije dopolnijo prazna polja.`;
     document.querySelector('#import-preview').hidden = false;
   } catch (error) { backupStatus.textContent = error instanceof Error ? error.message : 'Datoteke ni mogoče prebrati.'; }
   event.target.value = '';
@@ -429,6 +524,10 @@ document.querySelector('#backup-import').addEventListener('click', () => {
     const ids = new Set(state[kind].map(item => item.id));
     for (const item of pendingImport[kind]) if (!ids.has(item.id)) { state[kind].push(item); ids.add(item.id); }
   }
+  const measurementIds = new Set(state.measurements.map(item => item.id));
+  for (const item of pendingImport.measurements) if (!measurementIds.has(item.id)) { state.measurements.push(item); measurementIds.add(item.id); }
+  for (const key of ['name', 'height', 'goal']) if (!state.profile[key] && pendingImport.profile[key]) state.profile[key] = pendingImport.profile[key];
+  for (const key of ['name', 'height', 'goal']) profileForm.elements[key].value = state.profile[key] ?? '';
   pendingImport = null;
   document.querySelector('#import-preview').hidden = true;
   backupStatus.textContent = 'Podatki so dodani. Obstoječi vnosi so ohranjeni.';
@@ -503,7 +602,7 @@ for (const kind of ['tasks', 'routine']) {
     input.value = ''; save(); render(); input.focus();
   });
 }
-const tabNames = new Set(['domov', 'opravila', 'rutina', 'koledar', 'jedilnik', 'podatki']);
+const tabNames = new Set(['domov', 'opravila', 'rutina', 'koledar', 'jedilnik', 'napredek', 'podatki']);
 function showTab() {
   const requested = decodeURIComponent(location.hash.slice(1));
   const active = tabNames.has(requested) ? requested : 'domov';
