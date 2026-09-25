@@ -368,6 +368,10 @@ const pantryLabels = Object.fromEntries(Object.keys(ingredientNames).map(name =>
   [name.normalize('NFD').replace(/[\u0300-\u036f]/g, ''), name]));
 state.pantryIngredients = state.pantryIngredients.filter(key => pantryKeys.includes(key));
 const pantryOptions = document.querySelector('#pantry-options');
+const pantrySearch = document.querySelector('#pantry-search');
+const pantryNoResults = document.createElement('p');
+pantryNoResults.className = 'pantry-no-results'; pantryNoResults.textContent = 'Ni zadetkov.';
+pantryNoResults.hidden = true;
 function renderPantryCount() {
   const count = state.pantryIngredients.length;
   document.querySelector('#pantry-count').textContent = `(${count} ${count === 1 ? 'izbrana' : count === 2 ? 'izbrani' : 'izbranih'})`;
@@ -384,6 +388,16 @@ for (const key of pantryKeys) {
   label.append(checkbox, document.createTextNode(name[0].toLocaleUpperCase('sl-SI') + name.slice(1)));
   pantryOptions.append(label);
 }
+pantryOptions.after(pantryNoResults);
+pantrySearch.addEventListener('input', () => {
+  const query = pantrySearch.value.trim().toLocaleLowerCase('sl-SI').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  let visible = 0;
+  pantryOptions.querySelectorAll('label').forEach(label => {
+    label.hidden = !label.textContent.toLocaleLowerCase('sl-SI').normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(query);
+    if (!label.hidden) visible++;
+  });
+  pantryNoResults.hidden = visible > 0;
+});
 document.querySelector('#pantry-clear').addEventListener('click', () => {
   pantryOptions.querySelectorAll('input:checked').forEach(input => { input.checked = false; });
   state.pantryIngredients = []; save(); renderPantryCount(); clearSuggestion();
