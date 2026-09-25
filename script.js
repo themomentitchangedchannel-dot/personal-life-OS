@@ -382,6 +382,8 @@ document.querySelector('#meal-form').addEventListener('submit', event => {
   meal.recipeId = currentSuggestion?.kind === kind && currentSuggestion.title === value ? currentSuggestion.id
     : existing?.recipeId && mealRecipes.some(recipe => recipe.id === existing.recipeId && recipe.title === value) ? existing.recipeId : undefined;
   if (existing && meal.recipeId !== previousRecipeId) delete meal.recipeIngredients;
+  if (currentSuggestion?.id === meal.recipeId && currentSuggestion.title === value)
+    meal.recipeIngredients = [...currentSuggestion.ingredients];
   meal.nutrition = anyMacro ? { ...values, source: photoNutritionPending ? 'photo-estimate'
     : recipeNutritionPending ? 'recipe-estimate' : 'manual' } : null;
   if (!existing) state.meals.push(meal);
@@ -631,14 +633,57 @@ function suggestMeal() {
   }
   empty.hidden = true;
   const { recipe, missing } = next;
-  currentSuggestion = recipe;
+  currentSuggestion = { ...recipe, ingredients: [...recipe.ingredients] };
   document.querySelector('#suggestion-kind').textContent = `PREDLOG ZA ${mealKinds[kind].toUpperCase()}`;
   document.querySelector('#suggestion-text').textContent = recipe.title;
   document.querySelector('#suggestion-match').textContent = availableIngredients.length
     ? missing.length ? `Imaš ${recipe.ingredients.length - missing.length} od ${recipe.ingredients.length} sestavin. Manjka še: ${missing.join(', ')}.` : 'Vse sestavine imaš doma.'
     : '';
   document.querySelector('#suggestion-recipe').replaceChildren(...recipeContent(recipe).childNodes);
+  const editSuggestion = document.createElement('button'); editSuggestion.type = 'button';
+  editSuggestion.className = 'suggestion-recipe-edit'; editSuggestion.textContent = 'Uredi sestavine in količine';
+  editSuggestion.addEventListener('click', showSuggestionEditor);
+  document.querySelector('#suggestion-recipe').append(editSuggestion);
   document.querySelector('#suggestion-result').hidden = false;
+}
+function showSuggestionEditor() {
+  if (!currentSuggestion) return;
+  const container = document.querySelector('#suggestion-recipe');
+  container.querySelector('.recipe-ingredient-editor')?.remove();
+  const form = document.createElement('form'); form.className = 'recipe-ingredient-editor';
+  const heading = document.createElement('strong'); heading.textContent = 'Prilagodi predlog pred dodajanjem';
+  const rows = document.createElement('div'); rows.className = 'recipe-ingredient-rows';
+  form.append(heading, rows);
+  const addRow = (value = '') => {
+    const row = document.createElement('div'); row.className = 'recipe-ingredient-row';
+    const input = document.createElement('input'); input.type = 'text'; input.required = true;
+    input.maxLength = 120; input.value = value; input.placeholder = 'Npr. 150 g piščanca';
+    input.setAttribute('aria-label', 'Količina in sestavina');
+    const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Odstrani';
+    remove.addEventListener('click', () => row.remove()); row.append(input, remove); rows.append(row);
+    return input;
+  };
+  currentSuggestion.ingredients.forEach(addRow);
+  const message = document.createElement('p'); message.textContent = 'Spremeni količino v besedilu ali dodaj in odstrani sestavine.';
+  const add = document.createElement('button'); add.type = 'button'; add.textContent = '+ Dodaj sestavino';
+  add.addEventListener('click', () => addRow().focus());
+  const saveButton = document.createElement('button'); saveButton.type = 'submit'; saveButton.textContent = 'Uporabi spremembe';
+  const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Prekliči';
+  cancel.addEventListener('click', () => form.remove()); form.append(message, add, saveButton, cancel);
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const ingredients = [...rows.querySelectorAll('input')].map(input => input.value.trim());
+    if (!ingredients.length || ingredients.some(value => !value) || ingredients.length > 20) {
+      message.textContent = ingredients.length > 20 ? 'Največ 20 sestavin.' : 'Vnesi vsaj eno sestavino.';
+      return;
+    }
+    currentSuggestion = { ...currentSuggestion, ingredients };
+    container.replaceChildren(...recipeContent(currentSuggestion).childNodes, container.querySelector('.suggestion-recipe-edit'));
+    document.querySelector('#suggestion-nutrition-status').textContent = 'Predlog je popravljen. Izberi »Izpolni obrok in hranilne vrednosti«.';
+    recipeNutritionPending = false;
+    for (const id of Object.keys(nutritionInputs)) document.querySelector(`#meal-${id}`).value = '';
+  });
+  container.append(form); rows.querySelector('input')?.focus();
 }
 document.querySelector('#suggest-meal').addEventListener('click', suggestMeal);
 document.querySelector('#next-suggestion').addEventListener('click', suggestMeal);
