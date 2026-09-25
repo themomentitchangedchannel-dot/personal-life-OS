@@ -36,3 +36,5 @@ The mobile-friendly app separates the home overview, routine, combined calendar 
 ## Predlogi obrokov
 
 V zavihku Jedilnik izberi vrsto obroka in klikni »Predlagaj mi obrok«. Vsak predlog vsebuje sestavine za eno osebo, čas in korake priprave. Ko predlog dodaš v tedenski jedilnik, recept odpreš s klikom na »Recept« pri obroku.
+
+Sestavine, ki jih imaš doma, vpiši v polje pri predlogih (ločene z vejicami). Predlogi se razvrstijo po številu manjkajočih sestavin; prikazan je tudi njihov seznam. Iskanje poteka lokalno po vključenih receptih.

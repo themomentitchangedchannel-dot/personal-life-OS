@@ -333,6 +333,32 @@ let currentSuggestion = null;
 function clearSuggestion() {
   currentSuggestion = null;
   document.querySelector('#suggestion-result').hidden = true;
+  document.querySelector('#suggestion-empty').hidden = true;
+}
+const ingredientNames = {
+  jajce: /jajc|jajč|jajic/i, mleko: /mlek|napitk/i, ovseni: /ovsen/i,
+  banana: /banan/i, orehi: /oreh/i, jogurt: /jogurt/i, sadje: /sad|jagod|borovn|malin/i,
+  skuta: /skut/i, kruh: /kruh|toast/i, riž: /riž/i, piščanec: /piščan/i,
+  zelenjava: /zelenjav/i, korenje: /koren/i, paprika: /paprik/i, čebula: /čebul/i,
+  špinača: /špinač/i, paradižnik: /paradiž/i, kumara: /kumar/i, solata: /solat/i,
+  česen: /česn/i, olje: /olj/i, testenine: /testenin/i, tuna: /tun/i,
+  leča: /leč/i, fižol: /fižol/i, losos: /losos/i, brokoli: /brokol/i,
+  kuskus: /kuskus/i, krompir: /krompir/i, sir: /sir|parmezan/i,
+  tortilja: /tortil/i, humus: /humus/i, bučka: /bučk/i, jabolko: /jabolk/i
+};
+function ingredientKey(value) {
+  const normalized = value.toLocaleLowerCase('sl-SI').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const canonical = normalized.replace(/^\s*[\d¼½¾.,/\s]+\s*(g|kg|ml|l|žlička|žlici|žlice|rezini|rezina|pest|strok|večji|velika|ščepec)?\s*/i, '').trim();
+  for (const [name, pattern] of Object.entries(ingredientNames)) {
+    const simple = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (new RegExp(pattern.source.normalize('NFD').replace(/[\u0300-\u036f]/g, ''), 'i').test(canonical)) return simple;
+  }
+  return canonical.replace(/\b(in|ali|sveže|sveža|mlade|kuhane|suhega|odcejene)\b/g, '').trim();
+}
+function ingredientMatches(input, required) {
+  if (input === required) return true;
+  // Ujemanje na koren besede pokrije npr. »jajca« in »jajce«.
+  return input.length >= 4 && required.length >= 4 && (input.startsWith(required.slice(0, 4)) || required.startsWith(input.slice(0, 4)));
 }
 function recipeContent(recipe) {
   const container = document.createElement('div'); container.className = 'recipe-details';
@@ -348,19 +374,40 @@ function recipeContent(recipe) {
 }
 function suggestMeal() {
   const kind = document.querySelector('#meal-kind').value;
+  const availableIngredients = document.querySelector('#available-ingredients').value.split(',').map(ingredientKey).filter(Boolean);
   const alreadyPlanned = new Set(state.meals.filter(item => item.date === selectedMealDate).map(item => item.text));
-  const available = mealRecipes.filter(recipe => recipe.kind === kind && recipe.id !== currentSuggestion?.id && !alreadyPlanned.has(recipe.title));
-  const choices = available.length ? available : mealRecipes.filter(recipe => recipe.kind === kind && recipe.id !== currentSuggestion?.id);
-  const recipe = choices[Math.floor(Math.random() * choices.length)] || mealRecipes.find(recipe => recipe.kind === kind);
+  let choices = mealRecipes.filter(recipe => recipe.kind === kind).map(recipe => ({ recipe,
+    missing: recipe.ingredients.filter(ingredient => !availableIngredients.some(input => ingredientMatches(input, ingredientKey(ingredient)))) }));
+  if (availableIngredients.length) {
+    choices = choices.filter(entry => entry.missing.length < entry.recipe.ingredients.length)
+      .sort((a, b) => a.missing.length - b.missing.length || a.recipe.minutes - b.recipe.minutes);
+  } else choices.sort(() => Math.random() - 0.5);
+  const fresh = choices.filter(entry => entry.recipe.id !== currentSuggestion?.id && !alreadyPlanned.has(entry.recipe.title));
+  const next = (fresh.length ? fresh : choices.filter(entry => entry.recipe.id !== currentSuggestion?.id))[0] || choices[0];
+  const empty = document.querySelector('#suggestion-empty');
+  if (!next) {
+    clearSuggestion();
+    empty.textContent = availableIngredients.length
+      ? 'Med recepti za ta obrok ni ujemanja. Poskusi dodati še kakšno sestavino ali izberi drugo vrsto obroka.'
+      : 'Ni več predlogov za ta obrok.';
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+  const { recipe, missing } = next;
   currentSuggestion = recipe;
   document.querySelector('#suggestion-kind').textContent = `PREDLOG ZA ${mealKinds[kind].toUpperCase()}`;
   document.querySelector('#suggestion-text').textContent = recipe.title;
+  document.querySelector('#suggestion-match').textContent = availableIngredients.length
+    ? missing.length ? `Imaš ${recipe.ingredients.length - missing.length} od ${recipe.ingredients.length} sestavin. Manjka še: ${missing.join(', ')}.` : 'Vse sestavine imaš doma.'
+    : '';
   document.querySelector('#suggestion-recipe').replaceChildren(...recipeContent(recipe).childNodes);
   document.querySelector('#suggestion-result').hidden = false;
 }
 document.querySelector('#suggest-meal').addEventListener('click', suggestMeal);
 document.querySelector('#next-suggestion').addEventListener('click', suggestMeal);
 document.querySelector('#meal-kind').addEventListener('change', clearSuggestion);
+document.querySelector('#available-ingredients').addEventListener('input', clearSuggestion);
 document.querySelector('#use-suggestion').addEventListener('click', () => {
   if (!currentSuggestion) return;
   document.querySelector('#meal-kind').value = currentSuggestion.kind;
