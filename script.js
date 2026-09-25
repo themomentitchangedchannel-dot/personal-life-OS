@@ -330,6 +330,61 @@ document.querySelector('#meal-form').addEventListener('submit', event => {
     kind, text: value, recipeId: currentSuggestion?.kind === kind && currentSuggestion.title === value ? currentSuggestion.id : undefined });
   input.value = ''; clearSuggestion(); save(); render(); input.focus();
 });
+const mealPhotoInput = document.querySelector('#meal-photo-input');
+document.querySelector('.meal-photo').hidden = !window.MEAL_VISION_ENDPOINT;
+const mealPhotoPreview = document.querySelector('#meal-photo-preview');
+const mealPhotoImage = document.querySelector('#meal-photo-image');
+const mealPhotoStatus = document.querySelector('#meal-photo-status');
+const mealPhotoAnalyze = document.querySelector('#meal-photo-analyze');
+let mealPhotoUrl = null;
+mealPhotoInput.addEventListener('change', () => {
+  if (mealPhotoUrl) URL.revokeObjectURL(mealPhotoUrl);
+  const file = mealPhotoInput.files[0];
+  mealPhotoPreview.hidden = !file;
+  mealPhotoStatus.textContent = '';
+  if (!file) return;
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 12_000_000) {
+    mealPhotoInput.value = ''; mealPhotoPreview.hidden = true;
+    mealPhotoStatus.textContent = 'Izberi sliko JPG, PNG ali WebP do 12 MB.';
+    return;
+  }
+  mealPhotoUrl = URL.createObjectURL(file);
+  mealPhotoImage.src = mealPhotoUrl;
+});
+async function compressedMealPhoto() {
+  await mealPhotoImage.decode();
+  const canvas = document.createElement('canvas');
+  const ratio = Math.min(1, 1000 / Math.max(mealPhotoImage.naturalWidth, mealPhotoImage.naturalHeight));
+  canvas.width = Math.max(1, Math.round(mealPhotoImage.naturalWidth * ratio));
+  canvas.height = Math.max(1, Math.round(mealPhotoImage.naturalHeight * ratio));
+  canvas.getContext('2d').drawImage(mealPhotoImage, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', .8).split(',')[1];
+}
+mealPhotoAnalyze.addEventListener('click', async () => {
+  if (!mealPhotoInput.files.length) return;
+  if (!window.MEAL_VISION_ENDPOINT) {
+    mealPhotoStatus.textContent = 'Prepoznava bo na voljo po povezavi storitve. Obrok lahko za zdaj dodaš ročno.';
+    return;
+  }
+  mealPhotoAnalyze.disabled = true; mealPhotoStatus.textContent = 'Prepoznavam jed …';
+  try {
+    const image = await compressedMealPhoto();
+    const response = await fetch(window.MEAL_VISION_ENDPOINT, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image })
+    });
+    if (!response.ok) throw new Error('Prepoznava trenutno ni uspela. Poskusi znova.');
+    const result = await response.json();
+    if (!result.title || typeof result.title !== 'string') throw new Error('Jedi na fotografiji ni bilo mogoče prepoznati.');
+    document.querySelector('#meal-title').value = result.title.slice(0, 120);
+    if (mealKinds[result.kind]) document.querySelector('#meal-kind').value = result.kind;
+    clearSuggestion();
+    mealPhotoStatus.textContent = 'Preveri predlagano jed in tapni »Dodaj obrok«.';
+    document.querySelector('#meal-title').focus();
+  } catch (error) {
+    mealPhotoStatus.textContent = error.message || 'Prepoznava ni uspela.';
+  } finally { mealPhotoAnalyze.disabled = false; }
+});
 let currentSuggestion = null;
 function clearSuggestion() {
   currentSuggestion = null;
