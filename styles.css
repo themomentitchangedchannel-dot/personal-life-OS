@@ -29,6 +29,7 @@
 .calendar-dots i.meal-dot,.calendar-legend i.legend-meal,.day-list li .kind.meal{background:#79aa88}
 
 /* Meal suggestions */
+.recipe-details{font-size:12px;color:#415744;line-height:1.5}.recipe-details p{font-size:12px!important;font-weight:500!important;margin:7px 0!important}.recipe-details strong{display:block;margin:10px 0 4px}.recipe-details ul,.recipe-details ol{padding-left:20px;margin:4px 0 9px}.recipe-details li{display:list-item;padding:0;border:0;font-size:12px}.planned-recipe{flex-basis:100%;margin-left:72px}.planned-recipe summary{cursor:pointer;color:#355d42;font-weight:700}.meal-list li:has(.planned-recipe){flex-wrap:wrap}.meal-list li:has(.planned-recipe) .remove{margin-left:auto}
 .meal-entry{min-width:0}.meal-suggestion{margin-top:12px}.meal-suggestion>button{width:100%;border:1px solid #9ab89a;border-radius:10px;background:#edf5eb;color:#375840;padding:10px;font:700 12px Manrope,system-ui,sans-serif;cursor:pointer}.meal-suggestion>button:hover{background:#e4f0e0}#suggestion-result{background:#f5f8f2;border:1px solid #dfeade;border-radius:12px;padding:15px;margin-top:9px}#suggestion-result[hidden]{display:none}#suggestion-result p{font-size:15px;font-weight:700;margin:8px 0 13px;color:#334c39}#suggestion-result>div{display:flex;gap:7px;flex-wrap:wrap}#suggestion-result button{border:0;border-radius:9px;padding:9px 11px;background:#304c3d;color:#fff;font:700 11px Manrope,system-ui,sans-serif;cursor:pointer}#suggestion-result #next-suggestion{background:#fff;color:#405b47;border:1px solid #d5e2d3}
 
 /* Main navigation */

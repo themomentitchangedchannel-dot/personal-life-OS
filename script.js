@@ -36,12 +36,6 @@ const dateObject = date => new Date(`${date}T12:00:00Z`);
 const addDays = (date, count) => isoDate(new Date(dateObject(date).getTime() + count * 86400000));
 const longDate = date => new Intl.DateTimeFormat('sl-SI', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(dateObject(date));
 const mealKinds = { breakfast: 'Zajtrk', lunch: 'Kosilo', dinner: 'Večerja', snack: 'Malica' };
-const mealIdeas = {
-  breakfast: ['Ovsena kaša z banano in orehi', 'Jajca na oko s polnozrnatim kruhom', 'Skuta z jagodičevjem', 'Polnozrnat toast z avokadom in jajcem', 'Grški jogurt s sadjem in ovsenimi kosmiči', 'Prosena kaša z jabolkom', 'Omleta s špinačo', 'Polnozrnat kruh s skuto in paradižnikom', 'Palačinke z jogurtom in sadjem', 'Smoothie z banano in ovsenimi kosmiči', 'Kruh z arašidovim maslom in banano', 'Rižev narastek s sadjem'],
-  lunch: ['Piščanec z rižem in zelenjavo', 'Zelenjavna rižota s parmezanom', 'Testenine s tuno in paradižnikom', 'Pečena riba s krompirjem in solato', 'Goveja juha in pražen krompir', 'Fižolova enolončnica', 'Puranje meso z ajdovo kašo', 'Lečina enolončnica', 'Testenine z bolonjsko omako', 'Pečena zelenjava s čičeriko', 'Piščančji zavitek z zelenjavo', 'Gobova rižota', 'Losos s kuskusom in brokolijem', 'Polnjene paprike', 'Zelenjavna lazanja'],
-  dinner: ['Omleta z zelenjavo in solato', 'Piščančja solata s kruhom', 'Zelenjavna juha in toast', 'Tortilja s fižolom in zelenjavo', 'Pečen krompir s skuto', 'Solata s tuno in jajcem', 'Riževa skleda z zelenjavo', 'Polnozrnat sendvič s puranom', 'Skutni namaz z zelenjavo in kruhom', 'Testeninska solata', 'Jajčna fritata z bučkami', 'Domača zelenjavna pita'],
-  snack: ['Banana in pest oreščkov', 'Jabolko in sir', 'Hruška in mandlji', 'Polnozrnat sendvič', 'Jogurt s sadjem', 'Korenček in humus', 'Nektarina in orehi', 'Skuta s sadjem', 'Domača ovsena ploščica', 'Trdo kuhano jajce in sadje', 'Riževi vaflji z arašidovim maslom', 'Grozdje in sir']
-};
 const mealWeekStart = date => addDays(date, -((dateObject(date).getUTCDay() + 6) % 7));
 let selectedMealDate = today();
 let displayedMealWeek = mealWeekStart(today());
@@ -303,7 +297,14 @@ function renderMeals() {
     const remove = document.createElement('button'); remove.className = 'remove'; remove.type = 'button'; remove.textContent = '×';
     remove.setAttribute('aria-label', `Odstrani obrok: ${item.text}`);
     remove.addEventListener('click', () => { state.meals = state.meals.filter(meal => meal.id !== item.id); save(); render(); });
-    row.append(kind, title, remove); list.append(row);
+    row.append(kind, title);
+    const recipe = mealRecipes.find(entry => entry.id === item.recipeId);
+    if (recipe) {
+      const details = document.createElement('details'); details.className = 'planned-recipe';
+      const summary = document.createElement('summary'); summary.textContent = 'Recept';
+      details.append(summary, recipeContent(recipe)); row.append(details);
+    }
+    row.append(remove); list.append(row);
   }
   document.querySelector('#meal-empty').hidden = entries.length > 0;
 }
@@ -323,8 +324,9 @@ document.querySelector('#meal-form').addEventListener('submit', event => {
   event.preventDefault();
   const input = document.querySelector('#meal-title');
   const value = input.value.trim(); if (!value) return;
+  const kind = document.querySelector('#meal-kind').value;
   state.meals.push({ id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, date: selectedMealDate,
-    kind: document.querySelector('#meal-kind').value, text: value });
+    kind, text: value, recipeId: currentSuggestion?.kind === kind && currentSuggestion.title === value ? currentSuggestion.id : undefined });
   input.value = ''; clearSuggestion(); save(); render(); input.focus();
 });
 let currentSuggestion = null;
@@ -332,15 +334,28 @@ function clearSuggestion() {
   currentSuggestion = null;
   document.querySelector('#suggestion-result').hidden = true;
 }
+function recipeContent(recipe) {
+  const container = document.createElement('div'); container.className = 'recipe-details';
+  const info = document.createElement('p'); info.textContent = `${recipe.minutes} min · za 1 osebo`;
+  const ingredientsTitle = document.createElement('strong'); ingredientsTitle.textContent = 'Sestavine';
+  const ingredients = document.createElement('ul');
+  recipe.ingredients.forEach(text => { const item = document.createElement('li'); item.textContent = text; ingredients.append(item); });
+  const stepsTitle = document.createElement('strong'); stepsTitle.textContent = 'Priprava';
+  const steps = document.createElement('ol');
+  recipe.steps.forEach(text => { const item = document.createElement('li'); item.textContent = text; steps.append(item); });
+  container.append(info, ingredientsTitle, ingredients, stepsTitle, steps);
+  return container;
+}
 function suggestMeal() {
   const kind = document.querySelector('#meal-kind').value;
   const alreadyPlanned = new Set(state.meals.filter(item => item.date === selectedMealDate).map(item => item.text));
-  const available = mealIdeas[kind].filter(text => text !== currentSuggestion?.text && !alreadyPlanned.has(text));
-  const choices = available.length ? available : mealIdeas[kind].filter(text => text !== currentSuggestion?.text);
-  const text = choices[Math.floor(Math.random() * choices.length)];
-  currentSuggestion = { kind, text };
+  const available = mealRecipes.filter(recipe => recipe.kind === kind && recipe.id !== currentSuggestion?.id && !alreadyPlanned.has(recipe.title));
+  const choices = available.length ? available : mealRecipes.filter(recipe => recipe.kind === kind && recipe.id !== currentSuggestion?.id);
+  const recipe = choices[Math.floor(Math.random() * choices.length)] || mealRecipes.find(recipe => recipe.kind === kind);
+  currentSuggestion = recipe;
   document.querySelector('#suggestion-kind').textContent = `PREDLOG ZA ${mealKinds[kind].toUpperCase()}`;
-  document.querySelector('#suggestion-text').textContent = text;
+  document.querySelector('#suggestion-text').textContent = recipe.title;
+  document.querySelector('#suggestion-recipe').replaceChildren(...recipeContent(recipe).childNodes);
   document.querySelector('#suggestion-result').hidden = false;
 }
 document.querySelector('#suggest-meal').addEventListener('click', suggestMeal);
@@ -349,7 +364,7 @@ document.querySelector('#meal-kind').addEventListener('change', clearSuggestion)
 document.querySelector('#use-suggestion').addEventListener('click', () => {
   if (!currentSuggestion) return;
   document.querySelector('#meal-kind').value = currentSuggestion.kind;
-  document.querySelector('#meal-title').value = currentSuggestion.text;
+  document.querySelector('#meal-title').value = currentSuggestion.title;
   document.querySelector('#meal-form').requestSubmit();
 });
 
