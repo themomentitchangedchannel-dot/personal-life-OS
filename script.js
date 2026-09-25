@@ -10,10 +10,10 @@ if (!Array.isArray(state.events)) state.events = [];
 if (!Array.isArray(state.meals)) state.meals = [];
 if (!state.profile || typeof state.profile !== 'object' || Array.isArray(state.profile)) state.profile = {};
 if (!Array.isArray(state.measurements)) state.measurements = [];
-if (state.routineDate !== today()) {
-  state.routine = state.routine.map(item => ({ ...item, done: false }));
-  state.routineDate = today();
-}
+state.routine = state.routine.map(item => ({ ...item,
+  completedDates: Array.isArray(item.completedDates) ? item.completedDates
+    : item.done && state.routineDate === today() ? [today()] : [] }));
+state.routineDate = today();
 const save = () => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* Storage may be disabled. */ } };
 const dateText = date => {
   const [year, month, day] = date.split('-').map(Number);
@@ -43,6 +43,11 @@ let displayedMealWeek = mealWeekStart(today());
 
 const isRecurring = item => !!item.recurrence;
 const dayNumber = date => (dateObject(date).getUTCDay() + 6) % 7;
+const routineOccursOn = (item, date) => {
+  if (item.start && date < item.start) return false;
+  if (item.until && date > item.until) return false;
+  return !item.weekdays || item.weekdays.includes(dayNumber(date));
+};
 function occursOn(item, date) {
   if (!isRecurring(item)) return item.date === date;
   if (!item.date || date < item.date || (item.recurrence.until && date > item.recurrence.until)) return false;
@@ -93,20 +98,27 @@ function renderList(kind) {
   const listId = kind === 'tasks' ? 'task' : 'routine';
   const list = document.querySelector(`#${listId}-list`);
   list.replaceChildren();
-  const entries = kind === 'tasks' ? visibleTasks() : state.routine.map(item => ({ item, done: !!item.done }));
+  const entries = kind === 'tasks' ? visibleTasks() : [...state.routine].sort((a, b) =>
+    Number(routineOccursOn(b, today())) - Number(routineOccursOn(a, today()))
+      || (a.time || '').localeCompare(b.time || '')).map(item => ({ item,
+    done: (item.completedDates || []).includes(today()), inactive: !routineOccursOn(item, today()) }));
   for (const entry of entries) {
     const { item } = entry;
     const row = document.createElement('li');
     const label = document.createElement('label');
     if (entry.done) label.classList.add('done');
     const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox'; checkbox.checked = entry.done; checkbox.disabled = !!entry.ended;
+    checkbox.type = 'checkbox'; checkbox.checked = entry.done; checkbox.disabled = !!entry.ended || !!entry.inactive;
     checkbox.addEventListener('change', () => {
       if (kind === 'tasks' && isRecurring(item)) {
         item.completedDates ||= [];
         item.completedDates = checkbox.checked
           ? [...new Set([...item.completedDates, entry.date])]
           : item.completedDates.filter(date => date !== entry.date);
+      } else if (kind === 'routine') {
+        item.completedDates = checkbox.checked
+          ? [...new Set([...(item.completedDates || []), today()])]
+          : (item.completedDates || []).filter(date => date !== today());
       } else item.done = checkbox.checked;
       save(); render();
     });
@@ -117,6 +129,12 @@ function renderList(kind) {
       repeat.textContent = '↻'; repeat.title = 'Ponavljajoče se opravilo'; label.append(repeat);
     }
     row.append(label);
+    if (kind === 'routine') {
+      const schedule = document.createElement('small'); schedule.className = 'routine-schedule';
+      const weekdays = ['Pon', 'Tor', 'Sre', 'Čet', 'Pet', 'Sob', 'Ned'];
+      schedule.textContent = `${item.time ? `${item.time} · ` : ''}${item.weekdays ? item.weekdays.map(day => weekdays[day]).join(', ') : 'Vsak dan'}${item.until ? ` · do ${dateText(item.until)}` : ''}${entry.inactive ? ' · ni na sporedu danes' : ''}`;
+      row.append(schedule);
+    }
     if (kind === 'tasks') {
       if (timeText(item)) {
         const time = document.createElement('span'); time.className = 'time-label'; time.textContent = timeText(item); row.append(time);
@@ -150,10 +168,12 @@ function render() {
   renderProgress();
   const dueToday = state.tasks.filter(item => isRecurring(item) ? occursOn(item, today()) : item.date && item.date <= today());
   const tasksDone = dueToday.filter(item => isRecurring(item) ? (item.completedDates || []).includes(today()) : item.done).length;
-  const routineDone = state.routine.filter(item => item.done).length;
+  const todayRoutine = state.routine.filter(item => routineOccursOn(item, today()));
+  const routineDone = todayRoutine.filter(item => (item.completedDates || []).includes(today())).length;
   document.querySelector('#task-count').textContent = `${tasksDone}/${dueToday.length}`;
-  document.querySelector('#routine-count').textContent = `${routineDone}/${state.routine.length}`;
-  const total = dueToday.length + state.routine.length;
+  document.querySelector('#routine-count').textContent = `${routineDone}/${todayRoutine.length}`;
+  document.querySelector('#routine-today-label').textContent = `Danes: ${routineDone}/${todayRoutine.length}`;
+  const total = dueToday.length + todayRoutine.length;
   document.querySelector('#day-progress').textContent = `${total ? Math.round((tasksDone + routineDone) / total * 100) : 0}%`;
   for (const button of document.querySelectorAll('[data-view]')) {
     button.setAttribute('aria-pressed', String(button.dataset.view === taskView));
@@ -526,6 +546,18 @@ function validatedEntries(entries, kind, backupRoutineDate) {
       clean.date = item.date; clean.time = item.time || '';
     } else {
       clean.done = kind === 'routine' && backupRoutineDate !== today() ? false : item.done === true;
+      if (kind === 'routine') {
+        if ((item.start != null && !validDate(item.start)) || (item.until != null && (!validDate(item.until) || (item.start && item.until < item.start)))
+          || (item.time && !validTime(item.time)) || (item.weekdays != null && (!Array.isArray(item.weekdays)
+            || !item.weekdays.length || item.weekdays.some(day => !Number.isInteger(day) || day < 0 || day > 6)))
+          || (item.completedDates != null && (!Array.isArray(item.completedDates) || item.completedDates.length > 5000
+            || item.completedDates.some(date => !validDate(date)))))
+          throw new Error('Kopija vsebuje neveljavno rutino.');
+        clean.start = item.start || null; clean.until = item.until || null;
+        clean.time = item.time || '';
+        if (item.weekdays) clean.weekdays = [...new Set(item.weekdays)];
+        clean.completedDates = item.completedDates ? [...new Set(item.completedDates)] : clean.done ? [today()] : [];
+      }
       if (kind === 'tasks') {
         if (item.date != null && !validDate(item.date)) throw new Error('Kopija vsebuje neveljaven datum.');
         clean.date = item.date || null;
@@ -656,7 +688,54 @@ document.querySelector('#task-repeat').addEventListener('change', event => {
     document.querySelector(`#task-weekdays input[value="${dayNumber(date)}"]`).checked = true;
   }
 });
-for (const kind of ['tasks', 'routine']) {
+const routineForm = document.querySelector('#routine-form');
+routineForm.querySelector('#routine-start').value = today();
+document.querySelector('#routine-repeat').addEventListener('change', event => {
+  const weekly = event.target.value === 'weekly';
+  document.querySelector('#routine-weekdays').hidden = !weekly;
+  if (weekly && !document.querySelector('#routine-weekdays input:checked'))
+    document.querySelector(`#routine-weekdays input[value="${dayNumber(document.querySelector('#routine-start').value || today())}"]`).checked = true;
+});
+routineForm.addEventListener('submit', event => {
+  event.preventDefault();
+  const start = document.querySelector('#routine-start').value;
+  const until = document.querySelector('#routine-until').value;
+  const weekly = document.querySelector('#routine-repeat').value === 'weekly';
+  const weekdays = [...document.querySelectorAll('#routine-weekdays input:checked')].map(day => Number(day.value));
+  const error = document.querySelector('#routine-error');
+  if (until && until < start) { error.textContent = 'Končni datum mora biti na dan začetka ali pozneje.'; error.hidden = false; return; }
+  if (weekly && (!weekdays.length || (until && !Array.from({ length: Math.min(7, Math.round((dateObject(until) - dateObject(start)) / 86400000) + 1) }, (_, i) => addDays(start, i)).some(date => weekdays.includes(dayNumber(date)))))) {
+    error.textContent = 'V izbranem obdobju izberi vsaj en dan ponavljanja.'; error.hidden = false; return;
+  }
+  error.hidden = true;
+  state.routine.push({ id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+    text: document.querySelector('#routine-input').value.trim(), start, until: until || null,
+    time: document.querySelector('#routine-time').value, ...(weekly ? { weekdays } : {}), completedDates: [] });
+  routineForm.reset(); document.querySelector('#routine-start').value = today();
+  document.querySelector('#routine-weekdays').hidden = true;
+  save(); render(); document.querySelector('#routine-input').focus();
+});
+const routinePrograms = {
+  morning: ['Kozarec vode', 'Kratek razteg', 'Zapiši najpomembnejšo nalogo dneva'],
+  evening: ['Pripravi stvari za jutri', 'Uredi prostor', 'Čas brez zaslona pred spanjem'],
+  movement: ['Kratek sprehod', 'Vaje za gibljivost', 'Trening moči']
+};
+document.querySelectorAll('[data-program]').forEach(button => button.addEventListener('click', () => {
+  const suggestions = routinePrograms[button.dataset.program];
+  let added = 0;
+  for (const text of suggestions) {
+    if (state.routine.some(item => item.text.toLocaleLowerCase('sl') === text.toLocaleLowerCase('sl'))) continue;
+    state.routine.push({ id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+      text, start: today(), until: null, time: '',
+      ...(text === 'Trening moči' ? { weekdays: [0, 2, 4] } : {}), completedDates: [] });
+    added++;
+  }
+  save(); render();
+  document.querySelector('#routine-program-status').textContent = added
+    ? `Dodani so ${added} novi koraki. Urediš jih lahko tako, da jih odstraniš in vneseš z želenim urnikom.`
+    : 'Koraki tega programa so že dodani.';
+}));
+for (const kind of ['tasks']) {
   const form = document.querySelector(`#${kind === 'tasks' ? 'task' : 'routine'}-form`);
   form.addEventListener('submit', event => {
     event.preventDefault();
