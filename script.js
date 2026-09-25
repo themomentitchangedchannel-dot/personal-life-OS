@@ -8,6 +8,7 @@ try {
 } catch { state = initial; }
 if (!Array.isArray(state.events)) state.events = [];
 if (!Array.isArray(state.meals)) state.meals = [];
+if (!Array.isArray(state.pantryIngredients)) state.pantryIngredients = [];
 if (!state.profile || typeof state.profile !== 'object' || Array.isArray(state.profile)) state.profile = {};
 if (!Array.isArray(state.measurements)) state.measurements = [];
 if (!state.checkinSettings || typeof state.checkinSettings !== 'object') state.checkinSettings = {};
@@ -344,7 +345,9 @@ const ingredientNames = {
   česen: /česn/i, olje: /olj/i, testenine: /testenin/i, tuna: /tun/i,
   leča: /leč/i, fižol: /fižol/i, losos: /losos/i, brokoli: /brokol/i,
   kuskus: /kuskus/i, krompir: /krompir/i, sir: /sir|parmezan/i,
-  tortilja: /tortil/i, humus: /humus/i, bučka: /bučk/i, jabolko: /jabolk/i
+  tortilja: /tortil/i, humus: /humus/i, bučka: /bučk/i, jabolko: /jabolk/i,
+  voda: /vod|jušne osnove/i, limona: /limon/i, med: /medu|med$/i,
+  cimet: /cimet/i, drobnjak: /drobnjak/i
 };
 function ingredientKey(value) {
   const normalized = value.toLocaleLowerCase('sl-SI').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -360,6 +363,32 @@ function ingredientMatches(input, required) {
   // Ujemanje na koren besede pokrije npr. »jajca« in »jajce«.
   return input.length >= 4 && required.length >= 4 && (input.startsWith(required.slice(0, 4)) || required.startsWith(input.slice(0, 4)));
 }
+const pantryKeys = [...new Set(mealRecipes.flatMap(recipe => recipe.ingredients.map(ingredientKey)))].sort((a, b) => a.localeCompare(b, 'sl'));
+const pantryLabels = Object.fromEntries(Object.keys(ingredientNames).map(name =>
+  [name.normalize('NFD').replace(/[\u0300-\u036f]/g, ''), name]));
+state.pantryIngredients = state.pantryIngredients.filter(key => pantryKeys.includes(key));
+const pantryOptions = document.querySelector('#pantry-options');
+function renderPantryCount() {
+  const count = state.pantryIngredients.length;
+  document.querySelector('#pantry-count').textContent = `(${count} ${count === 1 ? 'izbrana' : count === 2 ? 'izbrani' : 'izbranih'})`;
+}
+for (const key of pantryKeys) {
+  const label = document.createElement('label');
+  const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.value = key;
+  checkbox.checked = state.pantryIngredients.includes(key);
+  checkbox.addEventListener('change', () => {
+    state.pantryIngredients = [...pantryOptions.querySelectorAll('input:checked')].map(input => input.value);
+    save(); renderPantryCount(); clearSuggestion();
+  });
+  const name = pantryLabels[key] || key;
+  label.append(checkbox, document.createTextNode(name[0].toLocaleUpperCase('sl-SI') + name.slice(1)));
+  pantryOptions.append(label);
+}
+document.querySelector('#pantry-clear').addEventListener('click', () => {
+  pantryOptions.querySelectorAll('input:checked').forEach(input => { input.checked = false; });
+  state.pantryIngredients = []; save(); renderPantryCount(); clearSuggestion();
+});
+renderPantryCount();
 function recipeContent(recipe) {
   const container = document.createElement('div'); container.className = 'recipe-details';
   const info = document.createElement('p'); info.textContent = `${recipe.minutes} min · za 1 osebo`;
@@ -374,7 +403,7 @@ function recipeContent(recipe) {
 }
 function suggestMeal() {
   const kind = document.querySelector('#meal-kind').value;
-  const availableIngredients = document.querySelector('#available-ingredients').value.split(',').map(ingredientKey).filter(Boolean);
+  const availableIngredients = state.pantryIngredients;
   const alreadyPlanned = new Set(state.meals.filter(item => item.date === selectedMealDate).map(item => item.text));
   let choices = mealRecipes.filter(recipe => recipe.kind === kind).map(recipe => ({ recipe,
     missing: recipe.ingredients.filter(ingredient => !availableIngredients.some(input => ingredientMatches(input, ingredientKey(ingredient)))) }));
@@ -407,7 +436,6 @@ function suggestMeal() {
 document.querySelector('#suggest-meal').addEventListener('click', suggestMeal);
 document.querySelector('#next-suggestion').addEventListener('click', suggestMeal);
 document.querySelector('#meal-kind').addEventListener('change', clearSuggestion);
-document.querySelector('#available-ingredients').addEventListener('input', clearSuggestion);
 document.querySelector('#use-suggestion').addEventListener('click', () => {
   if (!currentSuggestion) return;
   document.querySelector('#meal-kind').value = currentSuggestion.kind;
@@ -719,7 +747,7 @@ document.querySelector('#backup-export').addEventListener('click', async () => {
   const photos = await photosRequest('getAll');
   const backup = { format: 'personal-life-os', version: 1, exportedAt: new Date().toISOString(),
     routineDate: state.routineDate, tasks: state.tasks, routine: state.routine, events: state.events, meals: state.meals,
-    profile: state.profile, measurements: state.measurements, photos,
+    profile: state.profile, measurements: state.measurements, photos, pantryIngredients: state.pantryIngredients,
     dailyCheckin: state.dailyCheckin, checkinSettings: state.checkinSettings };
   const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
   const link = document.createElement('a');
@@ -866,6 +894,8 @@ document.querySelector('#backup-file').addEventListener('change', async event =>
     pendingImport.photos = validatedPhotos(backup.photos);
     pendingImport.checkinSettings = validatedCheckinSettings(backup.checkinSettings);
     pendingImport.dailyCheckin = validatedDailyCheckin(backup.dailyCheckin);
+    pendingImport.pantryIngredients = Array.isArray(backup.pantryIngredients)
+      ? backup.pantryIngredients.filter(key => typeof key === 'string' && pantryKeys.includes(key)).slice(0, pantryKeys.length) : [];
     const counts = ['tasks', 'routine', 'events', 'meals'].map(kind =>
       pendingImport[kind].filter(item => !state[kind].some(existing => existing.id === item.id)).length);
     document.querySelector('#import-summary').textContent =
@@ -894,6 +924,9 @@ document.querySelector('#backup-import').addEventListener('click', async () => {
   const measurementIds = new Set(state.measurements.map(item => item.id));
   for (const item of toImport.measurements) if (!measurementIds.has(item.id)) { state.measurements.push(item); measurementIds.add(item.id); }
   for (const key of ['name', 'height', 'goal']) if (!state.profile[key] && toImport.profile[key]) state.profile[key] = toImport.profile[key];
+  state.pantryIngredients = [...new Set([...state.pantryIngredients, ...toImport.pantryIngredients])];
+  pantryOptions.querySelectorAll('input').forEach(input => { input.checked = state.pantryIngredients.includes(input.value); });
+  renderPantryCount(); clearSuggestion();
   for (const key of ['name', 'height', 'goal']) profileForm.elements[key].value = state.profile[key] ?? '';
   if (toImport.dailyCheckin) {
     state.dailyCheckin.waterMl = Math.max(state.dailyCheckin.waterMl, toImport.dailyCheckin.waterMl);
