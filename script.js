@@ -199,6 +199,7 @@ function renderCalendar() {
     grid.append(button);
   }
   document.querySelector('#selected-day-title').textContent = longDate(selectedDate);
+  document.querySelector('#task-date').value = selectedDate;
   const dayList = document.querySelector('#day-list'); dayList.replaceChildren();
   const entries = [
     ...tasksForDate(selectedDate).map(({ item, done }) => ({ ...item, done, kind: 'task' })),
@@ -230,10 +231,13 @@ function renderCalendar() {
     row.append(marker, title);
     const displayTime = item.kind === 'event' ? item.time : timeText(item);
     if (displayTime) { const time = document.createElement('span'); time.className = 'day-time'; time.textContent = displayTime; row.append(time); }
-    if (item.kind === 'event') {
+    if (item.kind === 'event' || item.kind === 'task') {
       const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'remove'; remove.textContent = '×';
-      remove.setAttribute('aria-label', `Odstrani dogodek: ${item.text}`);
-      remove.addEventListener('click', () => { state.events = state.events.filter(entry => entry.id !== item.id); save(); render(); });
+      remove.setAttribute('aria-label', `${item.kind === 'task' ? isRecurring(item) ? 'Odstrani ponavljanje' : 'Odstrani opravilo' : 'Odstrani dogodek'}: ${item.text}`);
+      remove.addEventListener('click', () => {
+        const kind = item.kind === 'task' ? 'tasks' : 'events';
+        state[kind] = state[kind].filter(entry => entry.id !== item.id); save(); render();
+      });
       row.append(remove);
     }
     dayList.append(row);
@@ -693,7 +697,7 @@ for (const kind of ['tasks', 'routine']) {
       const horizon = isoDate(new Date(dateObject(today()).getTime() + 30 * 86400000));
       taskView = !entry.date ? 'all' : nextDate <= today() ? 'today'
         : isRecurring(entry) && nextDate > horizon ? 'all' : 'upcoming';
-      document.querySelector('#task-date').value = today();
+      document.querySelector('#task-date').value = selectedDate;
       document.querySelector('#task-repeat').value = 'none';
       document.querySelector('#task-weekdays').hidden = true;
       document.querySelector('#task-until-wrap').hidden = true;
@@ -706,10 +710,10 @@ for (const kind of ['tasks', 'routine']) {
     input.value = ''; save(); render(); input.focus();
   });
 }
-const tabNames = new Set(['domov', 'opravila', 'rutina', 'koledar', 'jedilnik', 'napredek', 'podatki']);
+const tabNames = new Set(['domov', 'rutina', 'koledar', 'jedilnik', 'napredek', 'podatki']);
 function showTab() {
   const requested = decodeURIComponent(location.hash.slice(1));
-  const active = tabNames.has(requested) ? requested : 'domov';
+  const active = requested === 'opravila' ? 'koledar' : tabNames.has(requested) ? requested : 'domov';
   for (const section of document.querySelectorAll('[data-tab-view]')) section.hidden = section.dataset.tabView !== active;
   for (const link of document.querySelectorAll('[data-tab]')) {
     if (link.dataset.tab === active) link.setAttribute('aria-current', 'page');
