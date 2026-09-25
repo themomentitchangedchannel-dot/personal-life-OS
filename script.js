@@ -27,39 +27,88 @@ const isoDate = date => date.toISOString().slice(0, 10);
 const dateObject = date => new Date(`${date}T12:00:00Z`);
 const longDate = date => new Intl.DateTimeFormat('sl-SI', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(dateObject(date));
 
-function taskMatchesView(item) {
-  if (taskView === 'all') return true;
-  if (!item.date) return false;
-  return taskView === 'today' ? item.date <= today() : item.date > today();
+const isRecurring = item => !!item.recurrence;
+const dayNumber = date => (dateObject(date).getUTCDay() + 6) % 7;
+function occursOn(item, date) {
+  if (!isRecurring(item)) return item.date === date;
+  if (!item.date || date < item.date) return false;
+  const rule = item.recurrence;
+  if (rule.type === 'daily') return true;
+  if (rule.type === 'weekly') return rule.weekdays.includes(dayNumber(date));
+  if (rule.type === 'monthly') return Number(date.slice(8)) === Number(item.date.slice(8));
+  return false;
+}
+function tasksForDate(date) {
+  return state.tasks.filter(item => occursOn(item, date)).map(item => ({ item, date,
+    done: isRecurring(item) ? (item.completedDates || []).includes(date) : !!item.done }));
+}
+function nextOccurrence(item) {
+  for (let offset = 0; offset < 400; offset++) {
+    const date = isoDate(new Date(dateObject(today()).getTime() + offset * 86400000));
+    if (occursOn(item, date)) return date;
+  }
+  return item.date;
+}
+function visibleTasks() {
+  const entries = [];
+  for (const item of state.tasks) {
+    if (!isRecurring(item)) {
+      if (taskView === 'all' || (item.date && (taskView === 'today' ? item.date <= today() : item.date > today())))
+        entries.push({ item, date: item.date, done: !!item.done });
+    } else if (taskView === 'all') {
+      const date = nextOccurrence(item);
+      entries.push({ item, date, done: (item.completedDates || []).includes(date) });
+    } else if (taskView === 'today') {
+      if (occursOn(item, today())) entries.push({ item, date: today(), done: (item.completedDates || []).includes(today()) });
+    } else {
+      for (let offset = 1; offset <= 30; offset++) {
+        const date = isoDate(new Date(dateObject(today()).getTime() + offset * 86400000));
+        if (occursOn(item, date)) entries.push({ item, date, done: (item.completedDates || []).includes(date) });
+      }
+    }
+  }
+  return entries.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
 }
 
 function renderList(kind) {
   const listId = kind === 'tasks' ? 'task' : 'routine';
   const list = document.querySelector(`#${listId}-list`);
   list.replaceChildren();
-  const entries = kind === 'tasks'
-    ? state.tasks.filter(taskMatchesView).sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))
-    : state.routine;
-  for (const item of entries) {
+  const entries = kind === 'tasks' ? visibleTasks() : state.routine.map(item => ({ item, done: !!item.done }));
+  for (const entry of entries) {
+    const { item } = entry;
     const row = document.createElement('li');
     const label = document.createElement('label');
-    if (item.done) label.classList.add('done');
+    if (entry.done) label.classList.add('done');
     const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox'; checkbox.checked = !!item.done;
-    checkbox.addEventListener('change', () => { item.done = checkbox.checked; save(); render(); });
+    checkbox.type = 'checkbox'; checkbox.checked = entry.done;
+    checkbox.addEventListener('change', () => {
+      if (kind === 'tasks' && isRecurring(item)) {
+        item.completedDates ||= [];
+        item.completedDates = checkbox.checked
+          ? [...new Set([...item.completedDates, entry.date])]
+          : item.completedDates.filter(date => date !== entry.date);
+      } else item.done = checkbox.checked;
+      save(); render();
+    });
     const title = document.createElement('span'); title.textContent = item.text;
     label.append(checkbox, title);
+    if (kind === 'tasks' && isRecurring(item)) {
+      const repeat = document.createElement('small'); repeat.className = 'recurrence-label';
+      repeat.textContent = '↻'; repeat.title = 'Ponavljajoče se opravilo'; label.append(repeat);
+    }
     row.append(label);
     if (kind === 'tasks') {
       const due = document.createElement('span');
       due.className = 'due-date';
-      due.textContent = item.date ? (item.date === today() ? 'Danes' : dateText(item.date)) : 'Brez datuma';
-      if (item.date && item.date < today() && !item.done) due.classList.add('overdue');
+      due.textContent = entry.date ? (entry.date === today() ? 'Danes' : dateText(entry.date)) : 'Brez datuma';
+      if (entry.date && entry.date < today() && !entry.done) due.classList.add('overdue');
       row.append(due);
     }
     const remove = document.createElement('button');
-    remove.className = 'remove'; remove.type = 'button'; remove.textContent = '×';
-    remove.setAttribute('aria-label', `Odstrani: ${item.text}`);
+    remove.className = kind === 'tasks' && isRecurring(item) ? 'remove series-remove' : 'remove'; remove.type = 'button';
+    remove.textContent = kind === 'tasks' && isRecurring(item) ? 'Izbriši serijo' : '×';
+    remove.setAttribute('aria-label', `${kind === 'tasks' && isRecurring(item) ? 'Odstrani ponavljanje' : 'Odstrani'}: ${item.text}`);
     remove.addEventListener('click', () => { state[kind] = state[kind].filter(entry => entry.id !== item.id); save(); render(); });
     row.append(remove); list.append(row);
   }
@@ -68,13 +117,14 @@ function renderList(kind) {
   if (kind === 'tasks') empty.textContent = {
     today: 'Za danes ni opravil.', upcoming: 'Prihodnjih opravil še ni.', all: 'Začni z enim majhnim opravilom.'
   }[taskView];
+  document.querySelector('#task-range').hidden = taskView !== 'upcoming';
 }
 
 function render() {
   renderList('tasks'); renderList('routine');
   renderCalendar();
-  const dueToday = state.tasks.filter(item => item.date && item.date <= today());
-  const tasksDone = dueToday.filter(item => item.done).length;
+  const dueToday = state.tasks.filter(item => isRecurring(item) ? occursOn(item, today()) : item.date && item.date <= today());
+  const tasksDone = dueToday.filter(item => isRecurring(item) ? (item.completedDates || []).includes(today()) : item.done).length;
   const routineDone = state.routine.filter(item => item.done).length;
   document.querySelector('#task-count').textContent = `${tasksDone}/${dueToday.length}`;
   document.querySelector('#routine-count').textContent = `${routineDone}/${state.routine.length}`;
@@ -109,7 +159,7 @@ function renderCalendar() {
     if (key.slice(0, 7) !== displayedMonth) button.classList.add('other-month');
     if (key === today()) button.classList.add('today');
     if (key === selectedDate) button.classList.add('selected');
-    const tasks = state.tasks.filter(item => item.date === key).length;
+    const tasks = tasksForDate(key).length;
     const events = state.events.filter(item => item.date === key).length;
     if (tasks || events) {
       const dots = document.createElement('span'); dots.className = 'calendar-dots';
@@ -124,7 +174,7 @@ function renderCalendar() {
   document.querySelector('#selected-day-title').textContent = longDate(selectedDate);
   const dayList = document.querySelector('#day-list'); dayList.replaceChildren();
   const entries = [
-    ...state.tasks.filter(item => item.date === selectedDate).map(item => ({ ...item, kind: 'task' })),
+    ...tasksForDate(selectedDate).map(({ item, done }) => ({ ...item, done, kind: 'task' })),
     ...state.events.filter(item => item.date === selectedDate).map(item => ({ ...item, kind: 'event' }))
   ].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
   for (const item of entries) {
@@ -132,6 +182,22 @@ function renderCalendar() {
     if (item.done) row.classList.add('completed');
     const marker = document.createElement('span'); marker.className = `kind ${item.kind === 'event' ? 'event' : ''}`;
     const title = document.createElement('span'); title.className = 'day-title'; title.textContent = item.text;
+    if (item.kind === 'task') {
+      const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = item.done;
+      checkbox.setAttribute('aria-label', `Opravljeno: ${item.text}`);
+      checkbox.addEventListener('change', () => {
+        const task = state.tasks.find(entry => entry.id === item.id);
+        if (!task) return;
+        if (isRecurring(task)) {
+          task.completedDates ||= [];
+          task.completedDates = checkbox.checked
+            ? [...new Set([...task.completedDates, selectedDate])]
+            : task.completedDates.filter(date => date !== selectedDate);
+        } else task.done = checkbox.checked;
+        save(); render();
+      });
+      row.append(checkbox);
+    }
     row.append(marker, title);
     if (item.kind === 'event') {
       if (item.time) { const time = document.createElement('span'); time.className = 'day-time'; time.textContent = item.time; row.append(time); }
@@ -197,6 +263,17 @@ function validatedEntries(entries, kind, backupRoutineDate) {
       if (kind === 'tasks') {
         if (item.date != null && !validDate(item.date)) throw new Error('Kopija vsebuje neveljaven datum.');
         clean.date = item.date || null;
+        if (item.recurrence) {
+          const rule = item.recurrence;
+          if (!clean.date || !['daily', 'weekly', 'monthly'].includes(rule.type)
+            || !Array.isArray(rule.weekdays) || rule.weekdays.some(day => !Number.isInteger(day) || day < 0 || day > 6)
+            || (rule.type === 'weekly' && rule.weekdays.length === 0)
+            || !Array.isArray(item.completedDates) || item.completedDates.length > 5000
+            || item.completedDates.some(date => !validDate(date)))
+            throw new Error('Kopija vsebuje neveljavno ponavljanje.');
+          clean.recurrence = { type: rule.type, weekdays: [...new Set(rule.weekdays)] };
+          clean.completedDates = [...new Set(item.completedDates)];
+        }
       }
     }
     return clean;
@@ -242,6 +319,15 @@ document.querySelectorAll('[data-view]').forEach(button => button.addEventListen
   taskView = button.dataset.view;
   render();
 }));
+document.querySelector('#task-repeat').addEventListener('change', event => {
+  const weekly = event.target.value === 'weekly';
+  document.querySelector('#task-weekdays').hidden = !weekly;
+  document.querySelector('#task-form-error').hidden = true;
+  if (weekly && !document.querySelector('#task-weekdays input:checked')) {
+    const date = document.querySelector('#task-date').value || today();
+    document.querySelector(`#task-weekdays input[value="${dayNumber(date)}"]`).checked = true;
+  }
+});
 for (const kind of ['tasks', 'routine']) {
   const form = document.querySelector(`#${kind === 'tasks' ? 'task' : 'routine'}-form`);
   form.addEventListener('submit', event => {
@@ -251,9 +337,28 @@ for (const kind of ['tasks', 'routine']) {
     if (!value) return;
     const entry = { id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, text: value, done: false };
     if (kind === 'tasks') {
-      entry.date = document.querySelector('#task-date').value || null;
-      taskView = entry.date ? (entry.date <= today() ? 'today' : 'upcoming') : 'all';
+      const repeatType = document.querySelector('#task-repeat').value;
+      const start = document.querySelector('#task-date').value;
+      const error = document.querySelector('#task-form-error');
+      if (repeatType !== 'none' && !start) {
+        error.textContent = 'Za ponavljanje izberi začetni datum.'; error.hidden = false; return;
+      }
+      const weekdays = [...document.querySelectorAll('#task-weekdays input:checked')].map(day => Number(day.value));
+      if (repeatType === 'weekly' && !weekdays.length) {
+        error.textContent = 'Izberi vsaj en dan v tednu.'; error.hidden = false; return;
+      }
+      error.hidden = true;
+      entry.date = start || null;
+      if (repeatType !== 'none') entry.recurrence = { type: repeatType, weekdays: repeatType === 'weekly' ? weekdays : [] };
+      if (repeatType !== 'none') entry.completedDates = [];
+      const nextDate = isRecurring(entry) ? nextOccurrence(entry) : entry.date;
+      const horizon = isoDate(new Date(dateObject(today()).getTime() + 30 * 86400000));
+      taskView = !entry.date ? 'all' : nextDate <= today() ? 'today'
+        : isRecurring(entry) && nextDate > horizon ? 'all' : 'upcoming';
       document.querySelector('#task-date').value = today();
+      document.querySelector('#task-repeat').value = 'none';
+      document.querySelector('#task-weekdays').hidden = true;
+      document.querySelectorAll('#task-weekdays input').forEach(day => { day.checked = false; });
     }
     state[kind].push(entry);
     input.value = ''; save(); render(); input.focus();
