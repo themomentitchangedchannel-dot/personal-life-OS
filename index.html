@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f7f8f4" />
     <title>Personal Life OS</title>
-    <link rel="stylesheet" href="styles.css?v=28" />
+    <link rel="stylesheet" href="styles.css?v=29" />
     <script src="recipes.js?v=1" defer></script>
     <script src="vision-config.js?v=2" defer></script>
-    <script src="script.js?v=31" defer></script>
+    <script src="script.js?v=32" defer></script>
   </head>
   <body>
     <div class="shell">
@@ -23,6 +23,7 @@
         <a href="#koledar" data-tab="koledar">Koledar</a>
         <a href="#jedilnik" data-tab="jedilnik">Jedilnik</a>
         <a href="#napredek" data-tab="napredek">Napredek</a>
+        <a href="#stroski" data-tab="stroski">Stroški</a>
         <a href="#podatki" data-tab="podatki">Podatki</a>
       </nav>
 
@@ -77,9 +78,22 @@
           <p class="progress-hint">Osebni podatki, meritve in fotografije so shranjeni samo v tem brskalniku. Kopijo lahko preneseš v zavihku Podatki.</p>
         </section>
 
+        <section class="section expenses-section" data-tab-view="stroski" id="stroski" aria-labelledby="expenses-title">
+          <div class="section-heading"><div><span class="eyebrow">PREGLED PORABE</span><h2 id="expenses-title">Moji stroški</h2></div></div>
+          <div class="expenses-grid"><div class="panel"><h3>Dodaj strošek</h3><form id="expense-form" class="expense-form">
+            <label>Datum<input name="date" type="date" required /></label>
+            <label>Znesek (€)<input name="amount" type="number" min="0.01" max="1000000" step="0.01" inputmode="decimal" placeholder="Npr. 12,50" required /></label>
+            <label>Kategorija<select name="category"><option value="food">Hrana</option><option value="home">Dom</option><option value="transport">Prevoz</option><option value="health">Zdravje</option><option value="leisure">Prosti čas</option><option value="shopping">Nakupi</option><option value="bills">Položnice</option><option value="other">Drugo</option></select></label>
+            <label>Opis <span>(neobvezno)</span><input name="note" maxlength="120" placeholder="Npr. kosilo" /></label>
+            <div class="expense-form-actions"><button type="submit" id="expense-submit">Dodaj strošek</button><button type="button" id="expense-cancel" hidden>Prekliči urejanje</button></div>
+          </form></div><div class="panel"><div class="expense-month-controls"><button type="button" id="expense-prev" aria-label="Prejšnji mesec">‹</button><h3 id="expense-month-title"></h3><button type="button" id="expense-next" aria-label="Naslednji mesec">›</button></div><p class="expense-total" id="expense-total"></p><h4>Po kategorijah</h4><div id="expense-categories" class="expense-categories"></div></div></div>
+          <div class="panel expense-history"><h3>Vnosi v izbranem mesecu</h3><ul id="expense-list" class="expense-list"></ul><p id="expense-empty" class="empty">Za ta mesec še ni stroškov.</p></div>
+          <p class="progress-hint">Stroški so shranjeni v tem brskalniku. Varnostna kopija je v zavihku Podatki.</p>
+        </section>
+
         <section class="section backup-section" data-tab-view="podatki" id="podatki" aria-labelledby="backup-title"><div class="backup-card"><div><span class="eyebrow">TVOJI PODATKI</span><h2 id="backup-title">Vzemi svoje podatke s seboj</h2><p>Podatki so zdaj shranjeni samo v tem brskalniku. Shrani kopijo in jo lahko uvoziš na drugi napravi.</p></div><div class="backup-actions"><button type="button" id="backup-export">Prenesi kopijo</button><label for="backup-file" class="import-button">Izberi kopijo</label><input id="backup-file" type="file" accept=".json,application/json" class="sr-only" /></div><div class="import-preview" id="import-preview" hidden><p id="import-summary"></p><button type="button" id="backup-import">Uvozi podatke</button><button type="button" id="backup-cancel">Prekliči</button></div><p class="backup-status" id="backup-status" role="status" aria-live="polite"></p></div></section>
 
-        <section class="section modules" data-tab-view="domov" aria-labelledby="modules-title"><div class="section-heading"><div><span class="eyebrow">V PRIPRAVI</span><h2 id="modules-title">Še več prostora za življenje</h2></div></div><div class="module-grid"><article class="module"><span>💪</span><h3>Vadba</h3><p>Spremljaj gibanje.</p></article><article class="module"><span>💰</span><h3>Stroški</h3><p>Uredi svoje finance.</p></article></div></section>
+        <section class="section modules" data-tab-view="domov" aria-labelledby="modules-title"><div class="section-heading"><div><span class="eyebrow">V PRIPRAVI</span><h2 id="modules-title">Še več prostora za življenje</h2></div></div><div class="module-grid"><article class="module"><span>💪</span><h3>Vadba</h3><p>Spremljaj gibanje.</p></article></div></section>
       </main><footer>Personal Life OS <span>·</span> Naredi prostor za tisto, kar šteje.</footer>
     </div>
   </body>
