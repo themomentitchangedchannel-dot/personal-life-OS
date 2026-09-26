@@ -8,6 +8,7 @@ try {
 } catch { state = initial; }
 if (!Array.isArray(state.events)) state.events = [];
 if (!Array.isArray(state.meals)) state.meals = [];
+if (!Array.isArray(state.expenses)) state.expenses = [];
 if (!Array.isArray(state.pantryIngredients)) state.pantryIngredients = [];
 function validRecipeOverrides(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -175,6 +176,7 @@ function render() {
   renderCalendar();
   renderMeals();
   renderProgress();
+  renderExpenses();
   renderCheckin();
   const dueToday = state.tasks.filter(item => isRecurring(item) ? occursOn(item, today()) : item.date && item.date <= today());
   const tasksDone = dueToday.filter(item => isRecurring(item) ? (item.completedDates || []).includes(today()) : item.done).length;
@@ -1034,12 +1036,95 @@ photoForm.addEventListener('submit', async event => {
 renderPhotos().catch(error => { photoStatus.textContent = error.message; });
 
 const backupStatus = document.querySelector('#backup-status');
+const expenseCategories = { food: 'Hrana', home: 'Dom', transport: 'Prevoz', health: 'Zdravje',
+  leisure: 'Prosti čas', shopping: 'Nakupi', bills: 'Položnice', other: 'Drugo' };
+const euro = cents => new Intl.NumberFormat('sl-SI', { style: 'currency', currency: 'EUR' }).format(cents / 100);
+let expenseMonth = today().slice(0, 7);
+let editingExpenseId = null;
+const expenseForm = document.querySelector('#expense-form');
+expenseForm.elements.date.value = today();
+function resetExpenseForm() {
+  editingExpenseId = null; expenseForm.reset(); expenseForm.elements.date.value = today();
+  document.querySelector('#expense-submit').textContent = 'Dodaj strošek';
+  document.querySelector('#expense-cancel').hidden = true;
+}
+function renderExpenses() {
+  document.querySelector('#expense-month-title').textContent = new Intl.DateTimeFormat('sl-SI', {
+    month: 'long', year: 'numeric', timeZone: 'UTC' }).format(dateObject(`${expenseMonth}-01`));
+  const entries = state.expenses.filter(item => item.date.startsWith(expenseMonth))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  const sum = entries.reduce((total, entry) => total + entry.amountCents, 0);
+  document.querySelector('#expense-total').textContent = `Skupaj: ${euro(sum)} · ${entries.length} ${entries.length === 1 ? 'vnos' : 'vnosov'}`;
+  const categories = document.querySelector('#expense-categories'); categories.replaceChildren();
+  for (const [key, label] of Object.entries(expenseCategories)) {
+    const amount = entries.filter(item => item.category === key).reduce((total, item) => total + item.amountCents, 0);
+    if (!amount) continue;
+    const row = document.createElement('div'); row.className = 'expense-category';
+    const name = document.createElement('span'); name.textContent = label;
+    const value = document.createElement('strong'); value.textContent = euro(amount);
+    const bar = document.createElement('span'); bar.className = 'expense-bar';
+    const fill = document.createElement('span'); fill.style.width = `${Math.round(amount / sum * 100)}%`;
+    bar.append(fill); row.append(name, value, bar); categories.append(row);
+  }
+  const list = document.querySelector('#expense-list'); list.replaceChildren();
+  document.querySelector('#expense-empty').hidden = entries.length > 0;
+  for (const item of entries) {
+    const row = document.createElement('li');
+    const label = document.createElement('div');
+    const name = document.createElement('strong'); name.textContent = item.note || expenseCategories[item.category];
+    const meta = document.createElement('small'); meta.textContent = `${dateText(item.date)} · ${expenseCategories[item.category]}`;
+    label.append(name, meta);
+    const amount = document.createElement('strong'); amount.className = 'expense-amount'; amount.textContent = euro(item.amountCents);
+    const edit = document.createElement('button'); edit.type = 'button'; edit.textContent = 'Uredi';
+    edit.setAttribute('aria-label', `Uredi strošek: ${name.textContent}`);
+    edit.addEventListener('click', () => {
+      editingExpenseId = item.id;
+      expenseForm.elements.date.value = item.date;
+      expenseForm.elements.amount.value = (item.amountCents / 100).toFixed(2);
+      expenseForm.elements.category.value = item.category;
+      expenseForm.elements.note.value = item.note;
+      document.querySelector('#expense-submit').textContent = 'Shrani spremembe';
+      document.querySelector('#expense-cancel').hidden = false;
+      expenseForm.elements.amount.focus();
+    });
+    const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Odstrani';
+    remove.setAttribute('aria-label', `Odstrani strošek: ${name.textContent}`);
+    remove.addEventListener('click', () => {
+      state.expenses = state.expenses.filter(entry => entry.id !== item.id);
+      if (editingExpenseId === item.id) resetExpenseForm(); save(); renderExpenses();
+    });
+    row.append(label, amount, edit, remove); list.append(row);
+  }
+}
+expenseForm.addEventListener('submit', event => {
+  event.preventDefault();
+  const date = expenseForm.elements.date.value;
+  const amount = Number(expenseForm.elements.amount.value);
+  const amountCents = Math.round(amount * 100);
+  const category = expenseForm.elements.category.value;
+  if (!validDate(date) || !Number.isFinite(amount) || amountCents < 1 || amountCents > 100000000
+    || !Object.hasOwn(expenseCategories, category)) return;
+  const existing = state.expenses.find(entry => entry.id === editingExpenseId);
+  const item = existing || { id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}` };
+  Object.assign(item, { date, amountCents, category, note: expenseForm.elements.note.value.trim() });
+  if (!existing) state.expenses.push(item);
+  expenseMonth = date.slice(0, 7); resetExpenseForm(); save(); renderExpenses();
+});
+document.querySelector('#expense-cancel').addEventListener('click', resetExpenseForm);
+for (const [id, direction] of [['expense-prev', -1], ['expense-next', 1]])
+  document.querySelector(`#${id}`).addEventListener('click', () => {
+    const date = dateObject(`${expenseMonth}-01`);
+    expenseMonth = isoDate(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + direction, 1, 12))).slice(0, 7);
+    renderExpenses();
+  });
+
 let pendingImport = null;
 document.querySelector('#backup-export').addEventListener('click', async () => {
   try {
   const photos = await photosRequest('getAll');
   const backup = { format: 'personal-life-os', version: 1, exportedAt: new Date().toISOString(),
     routineDate: state.routineDate, tasks: state.tasks, routine: state.routine, events: state.events, meals: state.meals,
+    expenses: state.expenses,
     profile: state.profile, measurements: state.measurements, photos, pantryIngredients: state.pantryIngredients,
     recipeOverrides: state.recipeOverrides,
     dailyCheckin: state.dailyCheckin, checkinSettings: state.checkinSettings };
@@ -1054,6 +1139,17 @@ document.querySelector('#backup-export').addEventListener('click', async () => {
 
 const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
   && !Number.isNaN(Date.parse(`${value}T12:00:00Z`)) && isoDate(dateObject(value)) === value;
+function validatedExpenses(entries) {
+  if (entries == null) return [];
+  if (!Array.isArray(entries) || entries.length > 5000) throw new Error('Neveljavno število stroškov.');
+  return entries.map(item => {
+    if (!item || typeof item.id !== 'string' || !item.id || !validDate(item.date)
+      || !Number.isInteger(item.amountCents) || item.amountCents < 1 || item.amountCents > 100000000
+      || !Object.hasOwn(expenseCategories, item.category) || typeof item.note !== 'string' || item.note.length > 120)
+      throw new Error('Kopija vsebuje neveljaven strošek.');
+    return { id: item.id, date: item.date, amountCents: item.amountCents, category: item.category, note: item.note };
+  });
+}
 const validTime = value => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 function validatedEntries(entries, kind, backupRoutineDate) {
   if (!Array.isArray(entries) || entries.length > 5000) throw new Error('Neveljavno število vnosov.');
@@ -1208,10 +1304,11 @@ document.querySelector('#backup-file').addEventListener('change', async event =>
     pendingImport.pantryIngredients = Array.isArray(backup.pantryIngredients)
       ? backup.pantryIngredients.filter(key => typeof key === 'string' && pantryKeys.includes(key)).slice(0, pantryKeys.length) : [];
     pendingImport.recipeOverrides = validRecipeOverrides(backup.recipeOverrides);
+    pendingImport.expenses = validatedExpenses(backup.expenses);
     const counts = ['tasks', 'routine', 'events', 'meals'].map(kind =>
       pendingImport[kind].filter(item => !state[kind].some(existing => existing.id === item.id)).length);
     document.querySelector('#import-summary').textContent =
-      `Za dodajanje: ${counts[0]} opravil, ${counts[1]} korakov rutine, ${counts[2]} dogodkov, ${counts[3]} obrokov, ${pendingImport.measurements.filter(item => !state.measurements.some(existing => existing.id === item.id)).length} meritev, ${pendingImport.photos.length} fotografij (že shranjene se preskočijo). Osnovni podatki iz kopije dopolnijo prazna polja.`;
+      `Za dodajanje: ${counts[0]} opravil, ${counts[1]} korakov rutine, ${counts[2]} dogodkov, ${counts[3]} obrokov, ${pendingImport.expenses.filter(item => !state.expenses.some(existing => existing.id === item.id)).length} stroškov, ${pendingImport.measurements.filter(item => !state.measurements.some(existing => existing.id === item.id)).length} meritev, ${pendingImport.photos.length} fotografij (že shranjene se preskočijo). Osnovni podatki iz kopije dopolnijo prazna polja.`;
     document.querySelector('#import-preview').hidden = false;
   } catch (error) { backupStatus.textContent = error instanceof Error ? error.message : 'Datoteke ni mogoče prebrati.'; }
   event.target.value = '';
@@ -1233,6 +1330,8 @@ document.querySelector('#backup-import').addEventListener('click', async () => {
     const ids = new Set(state[kind].map(item => item.id));
     for (const item of toImport[kind]) if (!ids.has(item.id)) { state[kind].push(item); ids.add(item.id); }
   }
+  const expenseIds = new Set(state.expenses.map(item => item.id));
+  for (const item of toImport.expenses) if (!expenseIds.has(item.id)) { state.expenses.push(item); expenseIds.add(item.id); }
   const measurementIds = new Set(state.measurements.map(item => item.id));
   for (const item of toImport.measurements) if (!measurementIds.has(item.id)) { state.measurements.push(item); measurementIds.add(item.id); }
   for (const key of ['name', 'height', 'goal']) if (!state.profile[key] && toImport.profile[key]) state.profile[key] = toImport.profile[key];
@@ -1378,7 +1477,7 @@ for (const kind of ['tasks']) {
     input.value = ''; save(); render(); input.focus();
   });
 }
-const tabNames = new Set(['domov', 'rutina', 'koledar', 'jedilnik', 'napredek', 'podatki']);
+const tabNames = new Set(['domov', 'rutina', 'koledar', 'jedilnik', 'napredek', 'stroski', 'podatki']);
 function showTab() {
   const requested = decodeURIComponent(location.hash.slice(1));
   const active = requested === 'opravila' ? 'koledar' : tabNames.has(requested) ? requested : 'domov';
