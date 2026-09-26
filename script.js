@@ -9,6 +9,15 @@ try {
 if (!Array.isArray(state.events)) state.events = [];
 if (!Array.isArray(state.meals)) state.meals = [];
 if (!Array.isArray(state.pantryIngredients)) state.pantryIngredients = [];
+function validRecipeOverrides(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([id, ingredients]) =>
+    mealRecipes.some(recipe => recipe.id === id) && Array.isArray(ingredients)
+    && ingredients.length >= 1 && ingredients.length <= 20
+    && ingredients.every(line => typeof line === 'string' && !!line.trim() && line.length <= 120))
+    .map(([id, ingredients]) => [id, ingredients.map(line => line.trim())]));
+}
+state.recipeOverrides = validRecipeOverrides(state.recipeOverrides);
 if (!state.profile || typeof state.profile !== 'object' || Array.isArray(state.profile)) state.profile = {};
 if (!Array.isArray(state.measurements)) state.measurements = [];
 if (!state.checkinSettings || typeof state.checkinSettings !== 'object') state.checkinSettings = {};
@@ -614,8 +623,11 @@ function suggestMeal() {
   const kind = document.querySelector('#meal-kind').value;
   const availableIngredients = state.pantryIngredients;
   const alreadyPlanned = new Set(state.meals.filter(item => item.date === selectedMealDate).map(item => item.text));
-  let choices = mealRecipes.filter(recipe => recipe.kind === kind).map(recipe => ({ recipe,
-    missing: recipe.ingredients.filter(ingredient => !availableIngredients.some(input => ingredientMatches(input, ingredientKey(ingredient)))) }));
+  let choices = mealRecipes.filter(recipe => recipe.kind === kind).map(template => {
+    const recipe = { ...template, ingredients: state.recipeOverrides[template.id] || template.ingredients };
+    return { recipe, missing: recipe.ingredients.filter(ingredient =>
+      !availableIngredients.some(input => ingredientMatches(input, ingredientKey(ingredient)))) };
+  });
   if (availableIngredients.length) {
     choices = choices.filter(entry => entry.missing.length < entry.recipe.ingredients.length)
       .sort((a, b) => a.missing.length - b.missing.length || a.recipe.minutes - b.recipe.minutes);
@@ -668,21 +680,29 @@ function showSuggestionEditor() {
   const add = document.createElement('button'); add.type = 'button'; add.textContent = '+ Dodaj sestavino';
   add.addEventListener('click', () => addRow().focus());
   const saveButton = document.createElement('button'); saveButton.type = 'submit'; saveButton.textContent = 'Uporabi spremembe';
+  const saveFuture = document.createElement('button'); saveFuture.type = 'button';
+  saveFuture.textContent = 'Shrani za naslednjič';
   const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Prekliči';
-  cancel.addEventListener('click', () => form.remove()); form.append(message, add, saveButton, cancel);
-  form.addEventListener('submit', event => {
-    event.preventDefault();
+  cancel.addEventListener('click', () => form.remove()); form.append(message, add, saveButton, saveFuture, cancel);
+  function applyChanges(remember) {
     const ingredients = [...rows.querySelectorAll('input')].map(input => input.value.trim());
     if (!ingredients.length || ingredients.some(value => !value) || ingredients.length > 20) {
       message.textContent = ingredients.length > 20 ? 'Največ 20 sestavin.' : 'Vnesi vsaj eno sestavino.';
       return;
     }
     currentSuggestion = { ...currentSuggestion, ingredients };
+    if (remember) { state.recipeOverrides[currentSuggestion.id] = [...ingredients]; save(); }
     container.replaceChildren(...recipeContent(currentSuggestion).childNodes, container.querySelector('.suggestion-recipe-edit'));
-    document.querySelector('#suggestion-nutrition-status').textContent = 'Predlog je popravljen. Izberi »Izpolni obrok in hranilne vrednosti«.';
+    document.querySelector('#suggestion-nutrition-status').textContent = remember
+      ? 'Recept je shranjen za naslednjič. Zdaj ga lahko dodaš v jedilnik.'
+      : 'Predlog je popravljen samo za ta obrok. Zdaj ga lahko dodaš v jedilnik.';
     recipeNutritionPending = false;
     for (const id of Object.keys(nutritionInputs)) document.querySelector(`#meal-${id}`).value = '';
+  }
+  form.addEventListener('submit', event => {
+    event.preventDefault(); applyChanges(false);
   });
+  saveFuture.addEventListener('click', () => { if (form.reportValidity()) applyChanges(true); });
   container.append(form); rows.querySelector('input')?.focus();
 }
 document.querySelector('#suggest-meal').addEventListener('click', suggestMeal);
@@ -1021,6 +1041,7 @@ document.querySelector('#backup-export').addEventListener('click', async () => {
   const backup = { format: 'personal-life-os', version: 1, exportedAt: new Date().toISOString(),
     routineDate: state.routineDate, tasks: state.tasks, routine: state.routine, events: state.events, meals: state.meals,
     profile: state.profile, measurements: state.measurements, photos, pantryIngredients: state.pantryIngredients,
+    recipeOverrides: state.recipeOverrides,
     dailyCheckin: state.dailyCheckin, checkinSettings: state.checkinSettings };
   const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
   const link = document.createElement('a');
@@ -1186,6 +1207,7 @@ document.querySelector('#backup-file').addEventListener('change', async event =>
     pendingImport.dailyCheckin = validatedDailyCheckin(backup.dailyCheckin);
     pendingImport.pantryIngredients = Array.isArray(backup.pantryIngredients)
       ? backup.pantryIngredients.filter(key => typeof key === 'string' && pantryKeys.includes(key)).slice(0, pantryKeys.length) : [];
+    pendingImport.recipeOverrides = validRecipeOverrides(backup.recipeOverrides);
     const counts = ['tasks', 'routine', 'events', 'meals'].map(kind =>
       pendingImport[kind].filter(item => !state[kind].some(existing => existing.id === item.id)).length);
     document.querySelector('#import-summary').textContent =
@@ -1215,6 +1237,8 @@ document.querySelector('#backup-import').addEventListener('click', async () => {
   for (const item of toImport.measurements) if (!measurementIds.has(item.id)) { state.measurements.push(item); measurementIds.add(item.id); }
   for (const key of ['name', 'height', 'goal']) if (!state.profile[key] && toImport.profile[key]) state.profile[key] = toImport.profile[key];
   state.pantryIngredients = [...new Set([...state.pantryIngredients, ...toImport.pantryIngredients])];
+  for (const [id, ingredients] of Object.entries(toImport.recipeOverrides))
+    if (!Object.hasOwn(state.recipeOverrides, id)) state.recipeOverrides[id] = ingredients;
   pantryOptions.querySelectorAll('input').forEach(input => { input.checked = state.pantryIngredients.includes(input.value); });
   renderPantryCount(); clearSuggestion();
   for (const key of ['name', 'height', 'goal']) profileForm.elements[key].value = state.profile[key] ?? '';
