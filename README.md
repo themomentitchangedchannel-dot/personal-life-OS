@@ -42,3 +42,7 @@ Sestavine, ki jih imaš doma, označi v zaprtem seznamu »Izberi sestavine« pri
 ## Kalorije in makrohranila
 
 Pri obroku lahko vneseš porcijo, energijo (kcal), beljakovine, ogljikove hidrate in maščobe. Jedilnik sešteje samo obroke z vsemi štirimi hranilnimi vrednostmi in pokaže pokritost, da delni dnevni seštevek ni videti kot celoten vnos. Shranjene obroke lahko urejaš. Posodobljen Worker vrne približno oceno za fotografijo ali en obrok po receptu; uporabnik jo pred shranjevanjem preveri in popravi. Slikovna ocena porcije je nezanesljiva in ni prehranska analiza z laboratorijsko natančnostjo.
+
+## Stroški
+
+V zavihku Stroški lahko dodaš, urediš in odstraniš stroške z datumom, zneskom v EUR, kategorijo in opisom. Mesečni pregled pokaže vsoto in porabo po kategorijah. Zneski so shranjeni kot celi centi. Stroški se shranijo lokalno in so vključeni v izvoz ter uvoz varnostne kopije.
